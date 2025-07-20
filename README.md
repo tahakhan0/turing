@@ -69,7 +69,7 @@ docker build -t turing .
 ```bash
 docker run --rm --name turing-service \
   -p 8000:8000 \
-  -v /Users/tahakhan/Desktop/ring_camera:/app/ring_camera \
+  -v /Users/tahakhan/Desktop/ring_camera:/app/videos \
   turing
 ```
 
@@ -173,7 +173,7 @@ docker build -t turing .
 docker run --rm --name turing-face-worker \
   -e ENV="local" \
   -p 8000:8000 \
-  turing uvicorn src.app.main:app --host 0.0.0.0 --port 8000
+  turing uvicorn src.app:app --host 0.0.0.0 --port 8000
 ```
 
 **For full setup with Redis/Celery (production endpoints):**
