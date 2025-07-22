@@ -22,6 +22,8 @@ class Detection(BaseModel):
     bbox: BoundingBox
     confidence: float
     class_name: str
+    person_name: Optional[str] = None  # For recognized persons
+    recognition_confidence: Optional[float] = None  # Body-based recognition confidence
 
 class FrameAnalysis(BaseModel):
     frame_number: int

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 import os
 import glob
+import cv2
 from .schemas import (
     EnrollmentPayload,
     SaveFacePayload,
@@ -9,11 +10,11 @@ from .schemas import (
     FaceRecognitionAnalysis
 )
 from .service import (
-    analyze_video_with_recognition,
     save_unrecognized_face,
     save_person_label
 )
-from .yolo_service import batch_process_video_for_person_detection
+from .yolo_service import batch_process_video_for_person_detection as batch_process_video_for_person_detection_v1
+from . import yolo_service_v2
 
 router = APIRouter()
 
@@ -23,7 +24,7 @@ def dev_enrollment(payload: EnrollmentPayload):
     Process a video or a folder of videos for person detection.
     """
     if payload.video_path:
-        return batch_process_video_for_person_detection([payload.video_path], payload.user_id)
+        return yolo_service_v2.batch_process_video_for_person_detection([payload.video_path], payload.user_id)
     elif payload.folder_path:
         # Get all video files from the folder
         video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm']
@@ -37,16 +38,17 @@ def dev_enrollment(payload: EnrollmentPayload):
         if not video_paths:
             raise HTTPException(status_code=404, detail=f"No video files found in folder: {payload.folder_path}")
             
-        return batch_process_video_for_person_detection(video_paths, payload.user_id)
+        return yolo_service_v2.batch_process_video_for_person_detection(video_paths, payload.user_id)
 
 @router.post("/analyze", response_model=FaceRecognitionAnalysis)
 def analyze_video(payload: EnrollmentPayload):
     """
-    Analyze a video for both person and face recognition.
+    Analyze a video for both person and face recognition with body-based fallback.
     Identifies known faces and returns encodings for unknown faces.
+    Uses face recognition first, then falls back to body-based recognition.
     """
     if payload.video_path:
-        return analyze_video_with_recognition(payload.video_path, payload.user_id)
+        return yolo_service_v2.analyze_video_with_enhanced_recognition(payload.video_path, payload.user_id)
     elif payload.folder_path:
         # For folder analysis, analyze the first video found (or implement batch analysis)
         video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm']
@@ -61,7 +63,7 @@ def analyze_video(payload: EnrollmentPayload):
             raise HTTPException(status_code=404, detail=f"No video files found in folder: {payload.folder_path}")
         
         # For now, analyze the first video. Could be extended to analyze all videos
-        return analyze_video_with_recognition(video_paths[0], payload.user_id)
+        return yolo_service_v2.analyze_video_with_enhanced_recognition(video_paths[0], payload.user_id)
     else:
         raise HTTPException(status_code=400, detail="Either 'video_path' or 'folder_path' must be provided.")
 
@@ -169,3 +171,83 @@ def get_person_labels(user_id: str):
         }
     except Exception as e:
         return {"error": f"Failed to read labels: {str(e)}"}
+
+@router.post("/enrollment-v1", response_model=VideoAnalysis)
+def dev_enrollment_v1(payload: EnrollmentPayload):
+    """
+    Process a video or folder using the original YOLO service (v1) - kept for fallback.
+    """
+    if payload.video_path:
+        return batch_process_video_for_person_detection_v1([payload.video_path], payload.user_id)
+    elif payload.folder_path:
+        # Get all video files from the folder
+        video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm']
+        video_paths = []
+        
+        if os.path.exists(payload.folder_path):
+            for file in os.listdir(payload.folder_path):
+                if any(file.lower().endswith(ext) for ext in video_extensions):
+                    video_paths.append(os.path.join(payload.folder_path, file))
+        
+        if not video_paths:
+            raise HTTPException(status_code=404, detail=f"No video files found in folder: {payload.folder_path}")
+            
+        return batch_process_video_for_person_detection_v1(video_paths, payload.user_id)
+
+@router.post("/train-person")
+def train_person_recognition(payload: dict):
+    """
+    Train person recognition from labeled detections.
+    Payload should contain: user_id, person_name, and list of detection data.
+    """
+    user_id = payload.get("user_id")
+    person_name = payload.get("person_name") 
+    video_path = payload.get("video_path")
+    frame_numbers = payload.get("frame_numbers", [])
+    bboxes = payload.get("bboxes", [])
+    
+    if not all([user_id, person_name, video_path, frame_numbers, bboxes]):
+        raise HTTPException(status_code=400, detail="Missing required fields: user_id, person_name, video_path, frame_numbers, bboxes")
+    
+    # Extract person images from video frames
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise HTTPException(status_code=400, detail="Could not open video file")
+    
+    detection_images = []
+    
+    for frame_num, bbox in zip(frame_numbers, bboxes):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        
+        if ret:
+            # Extract person region
+            x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
+            person_img = frame[y1:y2, x1:x2]
+            if person_img.size > 0:
+                detection_images.append(person_img)
+    
+    cap.release()
+    
+    if not detection_images:
+        raise HTTPException(status_code=400, detail="No valid person images extracted")
+    
+    # Train the person recognition
+    yolo_service_v2.train_person_from_detections(user_id, person_name, detection_images)
+    
+    return {
+        "message": f"Successfully trained person recognition for {person_name}",
+        "images_used": len(detection_images)
+    }
+
+@router.get("/person-embeddings/{user_id}")
+def get_person_embeddings(user_id: str):
+    """
+    Get information about stored person embeddings for a user.
+    """
+    embeddings_info = yolo_service_v2.get_person_embeddings_info(user_id)
+    return {
+        "user_id": user_id,
+        "total_persons": len(embeddings_info),
+        "persons": embeddings_info
+    }

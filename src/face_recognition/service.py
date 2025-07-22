@@ -115,6 +115,29 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
     with open(labels_file, "w") as f:
         json.dump(labels_data, f, indent=2)
     
+    # Auto-update body embeddings if face encoding wasn't saved
+    if face_encoding is None:
+        try:
+            # Extract person image for body embedding training
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
+                ret, frame = cap.read()
+                if ret:
+                    x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
+                    person_image = frame[y1:y2, x1:x2]
+                    
+                    # Update body embeddings with this new person image
+                    if person_image.size > 0:
+                        # Import here to avoid circular import
+                        from . import yolo_service_v2
+                        yolo_service_v2.train_person_from_detections(user_id, person_name, [person_image])
+                        print(f"Auto-updated body embeddings for {person_name}")
+                
+                cap.release()
+        except Exception as e:
+            print(f"Failed to auto-update body embeddings: {str(e)}")
+    
     return label_entry
 
 def save_individual_face_crop(frame, bbox, face_id, user_id, recognition_status, person_name=None):
