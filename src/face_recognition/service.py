@@ -8,7 +8,7 @@ import cv2
 import os
 import json
 import numpy as np
-from .yolo_service import yolo_model # Relative import
+from .yolo_service import yolo_model
 from .schemas import FaceRecognitionAnalysis, RecognizedFace, UnrecognizedFace, BoundingBox, FaceRecognitionFrame, FaceInFrame
 
 # Use absolute path for face encodings file
@@ -130,8 +130,8 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
                     # Update body embeddings with this new person image
                     if person_image.size > 0:
                         # Import here to avoid circular import
-                        from . import yolo_service_v2
-                        yolo_service_v2.train_person_from_detections(user_id, person_name, [person_image])
+                        from . import yolo_service
+                        yolo_service.train_person_from_detections(user_id, person_name, [person_image])
                         print(f"Auto-updated body embeddings for {person_name}")
                 
                 cap.release()
