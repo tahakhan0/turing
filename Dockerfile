@@ -1,5 +1,6 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10.11-slim
+# Use an official Python runtime as a parent image (pinned to specific SHA256)
+# python:3.10.11-slim
+FROM python@sha256:fd86924ba14682eb11a3c244f60a35b5dfe3267cbf26d883fb5c14813ce926f1
 
 # Set the working directory in the container
 WORKDIR /app
@@ -18,14 +19,15 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv, a fast Python package installer
-RUN pip install --upgrade pip uv
+# Install specific versions of pip and uv for reproducibility
+RUN pip install --no-cache-dir pip==23.3.2 uv==0.1.18
 
 # Create a directory for the YOLO model
 RUN mkdir -p /app/models
 
-# Download the YOLOv8n model into the models directory
-RUN wget -O /app/models/yolov8n.pt https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt
+# Download the YOLOv8n model with integrity check
+RUN wget -O /app/models/yolov8n.pt https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt && \
+    echo "31e20dde3def09e2cf938c7be6fe23d9150bbbe503982af13345706515f2ef95  /app/models/yolov8n.pt" | sha256sum -c
 
 # Copy the requirements file and install Python packages using uv
 COPY requirements.txt .
