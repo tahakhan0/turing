@@ -209,7 +209,7 @@
         <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div class="mt-3">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-medium text-gray-900">Label Face</h3>
+                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Label Detections</h3>
                     <button id="close-modal" class="text-gray-400 hover:text-gray-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -254,10 +254,7 @@
 
                 <!-- Bulk Labeling Form -->
                 <div id="bulk-labeling-form" class="space-y-4 hidden">
-                    <div class="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
-                        <h4 class="text-sm font-medium text-blue-800 mb-2">Multiple People Detected</h4>
-                        <p class="text-sm text-blue-700">Each person has a unique colored bounding box. Label them individually below:</p>
-                    </div>
+                    <!-- Header will be dynamically added by createConsolidatedPersonInputs -->
                     
                     <!-- Multiple Person Inputs -->
                     <div id="bulk-person-inputs">
@@ -278,7 +275,7 @@
                             Save All Labels
                         </button>
                         <button id="skip-bulk" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            Skip All
+                            Skip Frame
                         </button>
                     </div>
                 </div>

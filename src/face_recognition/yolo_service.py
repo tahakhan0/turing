@@ -644,13 +644,18 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
                         })
                 
                 if person_data:
+                    # Load known faces for recognition
+                    from .service import load_known_faces
+                    known_face_encodings, known_face_names = load_known_faces()
+                    
                     # Process faces first for all persons
                     for person_id, person in enumerate(person_data):
                         face_locations = face_recognition.face_locations(person['rgb_image'])
+                        face_encodings = face_recognition.face_encodings(person['rgb_image'], face_locations)
                         person['face_detected'] = bool(face_locations)
                         
-                        if face_locations:
-                            for face_location in face_locations:
+                        if face_locations and face_encodings:
+                            for face_encoding, face_location in zip(face_encodings, face_locations):
                                 top, right, bottom, left = face_location
                                 box = person['box']
                                 
@@ -660,12 +665,24 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
                                 abs_y2 = box[1] + bottom
 
                                 face_bbox = BoundingBox(x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2)
+                                
+                                # Try to recognize the face
+                                person_name = None
+                                if known_face_encodings:
+                                    matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.6)
+                                    if True in matches:
+                                        first_match_index = matches.index(True)
+                                        person_name = known_face_names[first_match_index]
+                                        print(f"Face recognized as: {person_name}")
+                                
                                 face_detection = Detection(
                                     bbox=face_bbox,
                                     confidence=1.0,
                                     class_name="face",
                                     person_id=person_id,  # Link face to person
-                                    detection_type="face"
+                                    detection_type="face",
+                                    person_name=person_name,  # Add recognition result
+                                    recognition_confidence=1.0 if person_name else None
                                 )
                                 all_detections.append(face_detection)
                     
