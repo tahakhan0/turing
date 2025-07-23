@@ -309,56 +309,118 @@ def assess_lighting_quality(person_image):
     return max(0.0, min(1.0, quality_score))
 
 
-def recognize_person_by_body(person_image, user_id, similarity_threshold=0.65, lighting_quality_threshold=0.3):
+def recognize_multiple_persons_by_body(person_images, user_id, similarity_threshold=0.65, lighting_quality_threshold=0.3):
     """
-    Recognize a person based on their body features with improved lighting handling.
-    Returns (person_name, confidence) or (None, 0) if no match found.
-    Now includes lighting quality assessment for better reliability.
+    Recognize multiple persons based on their body features with proper assignment.
+    Prevents the same person from being assigned to multiple detections.
+    Returns list of (person_name, confidence) tuples matching the input order.
     """
-    if person_image.size == 0:
-        return None, 0.0
-    
-    # Assess lighting quality first
-    lighting_quality = assess_lighting_quality(person_image)
-    
-    # Adjust similarity threshold based on lighting quality
-    # Lower quality lighting requires higher similarity for confidence
-    adjusted_threshold = similarity_threshold + (1 - lighting_quality) * 0.15
-    
-    # Skip recognition if lighting is too poor
-    if lighting_quality < lighting_quality_threshold:
-        print(f"Lighting quality too poor for reliable recognition: {lighting_quality:.2f}")
-        return None, 0.0
-    
-    # Extract features from the current person image
-    current_features = extract_person_features(person_image)
+    if not person_images:
+        return []
     
     # Load known person embeddings
     known_embeddings = load_person_embeddings(user_id)
     
     if not known_embeddings:
-        return None, 0.0
+        return [(None, 0.0) for _ in person_images]
     
-    best_match = None
-    best_similarity = 0.0
+    # Extract features for all detected persons
+    detected_features = []
+    lighting_qualities = []
     
-    # Compare with all known persons
-    for person_name, known_features in known_embeddings.items():
-        # Calculate cosine similarity
-        similarity = cosine_similarity([current_features], [known_features])[0][0]
+    for person_image in person_images:
+        if person_image.size == 0:
+            detected_features.append(None)
+            lighting_qualities.append(0.0)
+            continue
+            
+        # Assess lighting quality
+        lighting_quality = assess_lighting_quality(person_image)
+        lighting_qualities.append(lighting_quality)
         
-        if similarity > best_similarity and similarity > adjusted_threshold:
-            best_similarity = similarity
-            best_match = person_name
+        # Skip feature extraction if lighting is too poor
+        if lighting_quality < lighting_quality_threshold:
+            detected_features.append(None)
+            continue
+            
+        # Extract features
+        features = extract_person_features(person_image)
+        detected_features.append(features)
     
-    # Apply lighting quality factor to final confidence
-    final_confidence = best_similarity * (0.7 + 0.3 * lighting_quality) if best_match else 0.0
+    # Create similarity matrix: detected_persons x known_persons
+    similarity_matrix = []
+    known_person_names = list(known_embeddings.keys())
     
-    if best_match:
-        print(f"Person recognized: {best_match} (similarity: {best_similarity:.3f}, "
-              f"lighting: {lighting_quality:.2f}, final_confidence: {final_confidence:.3f})")
+    for i, features in enumerate(detected_features):
+        if features is None:
+            similarity_matrix.append([0.0] * len(known_person_names))
+            continue
+            
+        similarities = []
+        lighting_quality = lighting_qualities[i]
+        adjusted_threshold = similarity_threshold + (1 - lighting_quality) * 0.15
+        
+        for person_name in known_person_names:
+            known_features = known_embeddings[person_name]
+            similarity = cosine_similarity([features], [known_features])[0][0]
+            
+            # Apply threshold and lighting quality factor
+            if similarity > adjusted_threshold:
+                final_similarity = similarity * (0.7 + 0.3 * lighting_quality)
+            else:
+                final_similarity = 0.0
+                
+            similarities.append(final_similarity)
+        
+        similarity_matrix.append(similarities)
     
-    return best_match, final_confidence
+    # Perform greedy assignment to prevent duplicate assignments
+    assignments = assign_persons_greedy(similarity_matrix, known_person_names)
+    
+    return assignments
+
+
+def assign_persons_greedy(similarity_matrix, known_person_names):
+    """
+    Greedy assignment algorithm to assign detected persons to known persons.
+    Each known person can only be assigned to one detected person per frame.
+    """
+    num_detected = len(similarity_matrix)
+    num_known = len(known_person_names)
+    
+    assignments = [(None, 0.0) for _ in range(num_detected)]
+    used_known_persons = set()
+    
+    # Create list of (similarity, detected_idx, known_idx) sorted by similarity
+    candidates = []
+    for d_idx in range(num_detected):
+        for k_idx in range(num_known):
+            similarity = similarity_matrix[d_idx][k_idx]
+            if similarity > 0.0:
+                candidates.append((similarity, d_idx, k_idx))
+    
+    # Sort by similarity (highest first)
+    candidates.sort(reverse=True)
+    
+    # Greedily assign highest similarities first, avoiding duplicates
+    for similarity, d_idx, k_idx in candidates:
+        known_person = known_person_names[k_idx]
+        
+        # Skip if this known person is already assigned or detected person already assigned
+        if known_person not in used_known_persons and assignments[d_idx][0] is None:
+            assignments[d_idx] = (known_person, similarity)
+            used_known_persons.add(known_person)
+            print(f"Assigned detected person {d_idx} to '{known_person}' (confidence: {similarity:.3f})")
+    
+    return assignments
+
+
+def recognize_person_by_body(person_image, user_id, similarity_threshold=0.65, lighting_quality_threshold=0.3):
+    """
+    Legacy function for single person recognition - now calls the multi-person version.
+    """
+    results = recognize_multiple_persons_by_body([person_image], user_id, similarity_threshold, lighting_quality_threshold)
+    return results[0] if results else (None, 0.0)
 
 
 def calculate_recognition_confidence_score(similarity, lighting_quality, temporal_boost=0.0):
@@ -421,41 +483,84 @@ def should_trust_recognition(confidence, lighting_quality, min_confidence=0.5, m
     return True, f"Recognition trusted (conf: {confidence:.2f}, lighting: {lighting_quality:.2f})"
 
 
-def create_visualization_image(frame, detections, frame_number, user_id):
+def create_visualization_image(frame, detections, frame_number, user_id, detection_filter=None):
     """
     Create a visualization image with bounding boxes drawn on detected persons and faces.
-    - People will be in GREEN.
+    - Each person gets a unique color based on their person_id
     - Faces will be in BLUE.
     - Recognized persons will have their names displayed.
+    
+    Args:
+        detection_filter: "person", "face", or None (show all)
+        
     Returns the relative URL path to the saved image.
     """
     os.makedirs(VISUALIZATIONS_DIR, exist_ok=True)
     vis_frame = frame.copy()
+    
+    # Define a set of distinct colors for different people (BGR format)
+    person_colors = [
+        (0, 255, 0),    # Green
+        (255, 0, 0),    # Blue  
+        (0, 0, 255),    # Red
+        (255, 255, 0),  # Cyan
+        (255, 0, 255),  # Magenta
+        (0, 255, 255),  # Yellow
+        (128, 0, 128),  # Purple
+        (255, 165, 0),  # Orange
+        (0, 128, 255),  # Light Blue
+        (128, 255, 0),  # Lime
+        (255, 20, 147), # Deep Pink
+        (0, 206, 209),  # Dark Turquoise
+    ]
 
-    for detection in detections:
+    # Filter detections if specified
+    filtered_detections = detections
+    if detection_filter:
+        filtered_detections = [d for d in detections if getattr(d, 'detection_type', 'person') == detection_filter]
+
+    for detection in filtered_detections:
         bbox = detection.bbox
+        detection_type = getattr(detection, 'detection_type', 'person')
 
-        # Determine color and label based on class name
-        if detection.class_name == "person":
-            color = (0, 255, 0)  # Green for person
+        # Determine color and label based on detection type
+        if detection_type == "person":
+            # Use unique color based on person_id, default to green if no ID
+            person_id = getattr(detection, 'person_id', 0)
+            color = person_colors[person_id % len(person_colors)]
+            
             confidence_text = f"{detection.confidence:.2f}"
             
             # Check if person has been recognized
             person_name = getattr(detection, 'person_name', None)
             if person_name:
-                label = f"{person_name}: {confidence_text}"
-                color = (0, 255, 255)  # Yellow for recognized person
+                label = f"PERSON ID:{person_id} {person_name}: {confidence_text}"
+                # Make recognized person boxes thicker
+                box_thickness = 3
             else:
-                label = f"Person: {confidence_text}"
+                label = f"PERSON ID:{person_id}: {confidence_text}"
+                box_thickness = 2
                 
-        elif detection.class_name == "face":
-            color = (255, 0, 0)  # Blue for face
-            label = "Face"
+        elif detection_type == "face":
+            # Use unique color based on person_id for faces too
+            person_id = getattr(detection, 'person_id', 0)
+            face_color = (255, 0, 0)  # Blue base for faces
+            color = face_color
+            
+            person_name = getattr(detection, 'person_name', None)
+            confidence_text = f"{detection.confidence:.2f}"
+            
+            if person_name:
+                label = f"FACE ID:{person_id} {person_name}: {confidence_text}"
+                box_thickness = 3
+            else:
+                label = f"FACE ID:{person_id}: {confidence_text}"
+                box_thickness = 2
         else:
             continue  # Skip other detections if any
 
         # Draw rectangle for the bounding box
-        cv2.rectangle(vis_frame, (bbox.x1, bbox.y1), (bbox.x2, bbox.y2), color, 2)
+        cv2.rectangle(vis_frame, (bbox.x1, bbox.y1), (bbox.x2, bbox.y2), color, box_thickness)
 
         # Create and draw the label with a background
         label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
@@ -465,7 +570,8 @@ def create_visualization_image(frame, detections, frame_number, user_id):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)  # White text
 
     # Save the image with a unique filename
-    filename = f"{user_id}_frame_{frame_number}.jpg"
+    suffix = f"_{detection_filter}" if detection_filter else "_combined"
+    filename = f"{user_id}_frame_{frame_number}{suffix}.jpg"
     filepath = os.path.join(VISUALIZATIONS_DIR, filename)
     cv2.imwrite(filepath, vis_frame)
 
@@ -519,31 +625,35 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
                 confidences = results[0].boxes.conf.cpu().numpy()
                 class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
 
+                # Collect all person data for batch processing
+                person_data = []
                 for i, box in enumerate(boxes):
                     class_name = yolo_model.names[class_ids[i]]
                     if class_name == "person":
-                        # --- 1. Add Person Detection ---
                         person_bbox = BoundingBox(x1=box[0], y1=box[1], x2=box[2], y2=box[3])
-                        
-                        # Extract person image for body-based recognition
                         person_image = frame[box[1]:box[3], box[0]:box[2]]
-                        
-                        # Try face recognition first
-                        face_detected = False
                         person_rgb = rgb_frame[box[1]:box[3], box[0]:box[2]]
-                        face_locations = face_recognition.face_locations(person_rgb)
                         
-                        recognized_person_name = None
-                        recognition_confidence = 0.0
+                        person_data.append({
+                            'index': i,
+                            'box': box,
+                            'bbox': person_bbox,
+                            'image': person_image,
+                            'rgb_image': person_rgb,
+                            'confidence': float(confidences[i])
+                        })
+                
+                if person_data:
+                    # Process faces first for all persons
+                    for person_id, person in enumerate(person_data):
+                        face_locations = face_recognition.face_locations(person['rgb_image'])
+                        person['face_detected'] = bool(face_locations)
                         
                         if face_locations:
-                            # Face detected - add face detection
-                            face_detected = True
                             for face_location in face_locations:
-                                # face_location is (top, right, bottom, left) relative to person_image
                                 top, right, bottom, left = face_location
-
-                                # Convert face location to absolute coordinates in the full frame
+                                box = person['box']
+                                
                                 abs_x1 = box[0] + left
                                 abs_y1 = box[1] + top
                                 abs_x2 = box[0] + right
@@ -552,75 +662,100 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
                                 face_bbox = BoundingBox(x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2)
                                 face_detection = Detection(
                                     bbox=face_bbox,
-                                    confidence=1.0,  # face_recognition doesn't provide confidence
-                                    class_name="face"
+                                    confidence=1.0,
+                                    class_name="face",
+                                    person_id=person_id,  # Link face to person
+                                    detection_type="face"
                                 )
                                 all_detections.append(face_detection)
+                    
+                    # Batch body-based recognition for persons without faces or failed face recognition
+                    persons_for_body_recognition = [p for p in person_data if not p['face_detected']]
+                    
+                    if persons_for_body_recognition:
+                        person_images = [p['image'] for p in persons_for_body_recognition]
+                        body_recognition_results = recognize_multiple_persons_by_body(person_images, user_id)
                         
-                        # If no face detected or face recognition fails, try body-based recognition
-                        if not face_detected or not recognized_person_name:
-                            recognized_person_name, recognition_confidence = recognize_person_by_body(
-                                person_image, user_id
-                            )
-                            
-                            # Apply temporal consistency if person was recognized
-                            if recognized_person_name:
-                                # Get lighting quality for decision making
-                                lighting_quality = assess_lighting_quality(person_image)
-                                
-                                # Get temporally-adjusted confidence
-                                initial_temporal_confidence = tracker.get_temporal_confidence(
-                                    frame_count, recognized_person_name, recognition_confidence, person_bbox
-                                )
-                                temporal_boost = initial_temporal_confidence - recognition_confidence
-                                
-                                # Calculate comprehensive confidence score
-                                final_confidence, confidence_reason = calculate_recognition_confidence_score(
-                                    recognition_confidence, lighting_quality, temporal_boost
-                                )
-                                
-                                # Decide whether to trust this recognition
-                                trust_decision, trust_reason = should_trust_recognition(
-                                    final_confidence, lighting_quality
-                                )
-                                
-                                if trust_decision:
-                                    # Update recognition confidence with all factors
-                                    recognition_confidence = final_confidence
-                                    
-                                    # Add to tracker history
-                                    tracker.add_detection(frame_count, i, recognized_person_name, 
-                                                        recognition_confidence, person_bbox)
-                                    
-                                    print(f"Recognized person by body: {recognized_person_name} - {confidence_reason}")
-                                else:
-                                    # Don't trust this recognition, reset it
-                                    print(f"Recognition rejected: {trust_reason}")
-                                    recognized_person_name = None
-                                    recognition_confidence = 0.0
-                        
-                        # Create person detection with recognition info
+                        # Apply results back to person data
+                        for person, (recognized_name, recognition_confidence) in zip(persons_for_body_recognition, body_recognition_results):
+                            person['recognized_name'] = recognized_name
+                            person['recognition_confidence'] = recognition_confidence
+                    
+                    # Create person detections with recognition info and unique IDs
+                    for person_id, person in enumerate(person_data):
                         person_detection = Detection(
-                            bbox=person_bbox,
-                            confidence=float(confidences[i]),
-                            class_name="person"
+                            bbox=person['bbox'],
+                            confidence=person['confidence'],
+                            class_name="person",
+                            person_id=person_id,  # Assign unique ID for each person in the frame
+                            detection_type="person"
                         )
                         
-                        # Add person name if recognized
-                        if recognized_person_name:
-                            person_detection.person_name = recognized_person_name
-                            person_detection.recognition_confidence = recognition_confidence
+                        # Add recognition info if available
+                        if person.get('recognized_name'):
+                            person_detection.person_name = person['recognized_name']
+                            person_detection.recognition_confidence = person['recognition_confidence']
+                            
+                            # Apply temporal consistency and confidence scoring
+                            lighting_quality = assess_lighting_quality(person['image'])
+                            
+                            # Get temporally-adjusted confidence
+                            initial_temporal_confidence = tracker.get_temporal_confidence(
+                                frame_count, person['recognized_name'], person['recognition_confidence'], person['bbox']
+                            )
+                            temporal_boost = initial_temporal_confidence - person['recognition_confidence']
+                            
+                            # Calculate comprehensive confidence score
+                            final_confidence, confidence_reason = calculate_recognition_confidence_score(
+                                person['recognition_confidence'], lighting_quality, temporal_boost
+                            )
+                            
+                            # Decide whether to trust this recognition
+                            trust_decision, trust_reason = should_trust_recognition(
+                                final_confidence, lighting_quality
+                            )
+                            
+                            if trust_decision:
+                                # Update recognition confidence with all factors
+                                person_detection.recognition_confidence = final_confidence
+                                
+                                # Add to tracker history
+                                tracker.add_detection(frame_count, person['index'], person['recognized_name'], 
+                                                    final_confidence, person['bbox'])
+                                
+                                print(f"Recognized person by body: {person['recognized_name']} - {confidence_reason}")
+                            else:
+                                # Don't trust this recognition, remove it
+                                print(f"Recognition rejected: {trust_reason}")
+                                person_detection.person_name = None
+                                person_detection.recognition_confidence = None
                         
                         all_detections.append(person_detection)
 
-            visualization_url = None
+            # Create separate visualization images for person and face detections
+            visualization_urls = {}
             if all_detections:
-                visualization_url = create_visualization_image(frame, all_detections, frame_count, user_id)
+                # Combined view (all detections)
+                visualization_urls["combined"] = create_visualization_image(frame, all_detections, frame_count, user_id)
+                
+                # Person-only view
+                person_detections = [d for d in all_detections if d.detection_type == "person"]
+                if person_detections:
+                    visualization_urls["person"] = create_visualization_image(frame, all_detections, frame_count, user_id, "person")
+                
+                # Face-only view  
+                face_detections = [d for d in all_detections if d.detection_type == "face"]
+                if face_detections:
+                    visualization_urls["face"] = create_visualization_image(frame, all_detections, frame_count, user_id, "face")
+            
+            # For backward compatibility, use combined as the main visualization URL
+            visualization_url = visualization_urls.get("combined")
 
             frame_analysis = FrameAnalysis(
                 frame_number=frame_count,
                 detections=all_detections,
-                visualization_url=visualization_url
+                visualization_url=visualization_url,
+                visualization_urls=visualization_urls if visualization_urls else None
             )
             frame_analyses.append(frame_analysis)
 
@@ -743,6 +878,8 @@ def analyze_video_with_enhanced_recognition(video_path, user_id):
             confidences = results[0].boxes.conf.cpu().numpy()
             class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
 
+            # Collect all person data for batch processing
+            person_data = []
             for i, box in enumerate(boxes):
                 class_name = yolo_model.names[class_ids[i]]
                 if class_name == "person":
@@ -751,11 +888,27 @@ def analyze_video_with_enhanced_recognition(video_path, user_id):
                     person_image = frame[y1:y2, x1:x2]
                     person_rgb = rgb_frame[y1:y2, x1:x2]
                     
-                    # Try face recognition first (PRIORITY)
-                    face_locations = face_recognition.face_locations(person_rgb)
-                    face_encodings = face_recognition.face_encodings(person_rgb, face_locations)
+                    person_data.append({
+                        'index': i,
+                        'box': box,
+                        'bbox': person_bbox,
+                        'image': person_image,
+                        'rgb_image': person_rgb,
+                        'confidence': float(confidences[i])
+                    })
+            
+            if person_data:
+                # Process faces first for all persons
+                for person in person_data:
+                    person_identified = False  # Initialize for each person
+                    face_locations = face_recognition.face_locations(person['rgb_image'])
+                    face_encodings = face_recognition.face_encodings(person['rgb_image'], face_locations)
                     
-                    person_identified = False
+                    person['face_detected'] = False
+                    person['face_recognized'] = False
+                    
+                    if face_locations and face_encodings:
+                        person['face_detected'] = True
                     
                     if face_locations and face_encodings:
                         # Process each face found

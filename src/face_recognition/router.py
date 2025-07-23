@@ -6,6 +6,7 @@ from .schemas import (
     EnrollmentPayload,
     SaveFacePayload,
     SavePersonLabelPayload,
+    BulkPersonLabelPayload,
     VideoAnalysis,
     FaceRecognitionAnalysis
 )
@@ -79,6 +80,7 @@ def save_face(payload: SaveFacePayload):
 def save_person_label_endpoint(payload: SavePersonLabelPayload):
     """
     Save a person label for a detected person in a specific frame.
+    Include person_id and detection_type for clarity when labeling multiple people.
     """
     label_entry = save_person_label(
         payload.user_id, 
@@ -87,7 +89,134 @@ def save_person_label_endpoint(payload: SavePersonLabelPayload):
         payload.bbox.model_dump(), 
         payload.person_name
     )
-    return {"message": f"Person label '{payload.person_name}' saved successfully.", "label": label_entry}
+    
+    # Enhanced response with clearer identification
+    person_identifier = f"Person ID {payload.person_id}" if payload.person_id is not None else "Person"
+    detection_type_text = f" ({payload.detection_type} detection)" if payload.detection_type else ""
+    
+    return {
+        "message": f"Label '{payload.person_name}' saved for {person_identifier}{detection_type_text}.",
+        "person_id": payload.person_id,
+        "detection_type": payload.detection_type,
+        "person_name": payload.person_name,
+        "label": label_entry
+    }
+
+@router.post("/save-bulk-person-labels")
+def save_bulk_person_labels_endpoint(payload: BulkPersonLabelPayload):
+    """
+    Save multiple person labels for detected persons in a single frame.
+    This allows labeling all persons in one image at once.
+    Example payload:
+    {
+        "user_id": "user123",
+        "video_path": "/path/to/video.mp4", 
+        "frame_number": 25,
+        "person_labels": [
+            {"person_id": 0, "person_name": "John", "bbox": {...}, "detection_type": "person"},
+            {"person_id": 1, "person_name": "Jane", "bbox": {...}, "detection_type": "person"}
+        ]
+    }
+    """
+    saved_labels = []
+    
+    for person_label in payload.person_labels:
+        try:
+            label_entry = save_person_label(
+                payload.user_id,
+                payload.video_path,
+                payload.frame_number,
+                person_label.bbox.model_dump(),
+                person_label.person_name
+            )
+            saved_labels.append({
+                "person_id": person_label.person_id,
+                "person_name": person_label.person_name,
+                "detection_type": person_label.detection_type,
+                "status": "success",
+                "label": label_entry
+            })
+        except Exception as e:
+            saved_labels.append({
+                "person_id": person_label.person_id,
+                "person_name": person_label.person_name, 
+                "detection_type": person_label.detection_type,
+                "status": "error",
+                "error": str(e)
+            })
+    
+    successful_saves = [l for l in saved_labels if l["status"] == "success"]
+    failed_saves = [l for l in saved_labels if l["status"] == "error"]
+    
+    return {
+        "message": f"Bulk labeling completed. {len(successful_saves)} successful, {len(failed_saves)} failed.",
+        "successful_labels": successful_saves,
+        "failed_labels": failed_saves,
+        "total_processed": len(payload.person_labels)
+    }
+
+@router.get("/frame-detections/{user_id}/{frame_number}")
+def get_frame_detections(user_id: str, frame_number: int, video_path: str = None):
+    """
+    Get all detections for a specific frame to help with bulk labeling.
+    Returns person_ids, bounding boxes, and detection types available for labeling.
+    """
+    if not video_path:
+        raise HTTPException(status_code=400, detail="video_path parameter is required")
+    
+    try:
+        # For now, we'll need to re-analyze the specific frame to get detection info
+        # In a production system, you'd store this information in a database
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(status_code=400, detail="Could not open video file")
+        
+        # Jump to the specific frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            raise HTTPException(status_code=400, detail="Could not read frame from video")
+        
+        # Quick detection analysis (simplified version)
+        from . import yolo_service
+        results = yolo_service.yolo_model(frame)
+        
+        detections_info = []
+        if results[0].boxes is not None:
+            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+            confidences = results[0].boxes.conf.cpu().numpy()
+            class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+            
+            person_id = 0
+            for i, box in enumerate(boxes):
+                class_name = yolo_service.yolo_model.names[class_ids[i]]
+                if class_name == "person":
+                    detections_info.append({
+                        "person_id": person_id,
+                        "bbox": {
+                            "x1": int(box[0]),
+                            "y1": int(box[1]), 
+                            "x2": int(box[2]),
+                            "y2": int(box[3])
+                        },
+                        "confidence": float(confidences[i]),
+                        "detection_type": "person",
+                        "class_name": "person"
+                    })
+                    person_id += 1
+        
+        return {
+            "user_id": user_id,
+            "frame_number": frame_number,
+            "video_path": video_path,
+            "detections": detections_info,
+            "total_persons": len(detections_info)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing frame: {str(e)}")
 
 @router.get("/images")
 def list_images():

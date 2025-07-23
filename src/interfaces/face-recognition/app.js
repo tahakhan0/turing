@@ -47,11 +47,22 @@ class FaceRecognitionUI {
         this.modal = document.getElementById('labeling-modal');
         this.modalFaceImage = document.getElementById('modal-face-image');
         this.modalFrameNumber = document.getElementById('modal-frame-number');
+        
+        // Single labeling elements
+        this.singleLabelingForm = document.getElementById('single-labeling-form');
         this.personNameInput = document.getElementById('person-name');
         this.nameSuggestions = document.getElementById('name-suggestions');
         this.confirmBtn = document.getElementById('confirm-face');
         this.skipBtn = document.getElementById('skip-face');
         this.rejectBtn = document.getElementById('reject-face');
+        
+        // Bulk labeling elements
+        this.bulkLabelingForm = document.getElementById('bulk-labeling-form');
+        this.bulkPersonInputs = document.getElementById('bulk-person-inputs');
+        this.bulkNameSuggestions = document.getElementById('bulk-name-suggestions');
+        this.confirmBulkBtn = document.getElementById('confirm-bulk');
+        this.skipBulkBtn = document.getElementById('skip-bulk');
+        
         this.closeModalBtn = document.getElementById('close-modal');
 
         // Filter elements
@@ -82,9 +93,15 @@ class FaceRecognitionUI {
 
         // Modal controls
         this.closeModalBtn.addEventListener('click', () => this.closeModal());
+        
+        // Single labeling controls
         this.confirmBtn.addEventListener('click', () => this.confirmFace());
         this.skipBtn.addEventListener('click', () => this.skipFace());
         this.rejectBtn.addEventListener('click', () => this.rejectFace());
+        
+        // Bulk labeling controls
+        this.confirmBulkBtn.addEventListener('click', () => this.confirmBulkLabels());
+        this.skipBulkBtn.addEventListener('click', () => this.skipBulkLabels());
 
         // Filter controls
         this.filterStatus.addEventListener('change', () => this.filterFaces());
@@ -459,9 +476,57 @@ class FaceRecognitionUI {
         this.renderFaceGrid();
     }
 
-    openLabelingModal(face) {
+    async openLabelingModal(face) {
         this.currentFaceData = face;
         
+        // Check if we need to fetch frame detection info for bulk labeling
+        await this.setupLabelingModal(face);
+        
+        // Show modal
+        this.modal.classList.remove('hidden');
+    }
+
+    async setupLabelingModal(face) {
+        try {
+            // Check if this frame has multiple people by fetching detection info
+            const frameDetections = await this.getFrameDetections(face);
+            
+            if (frameDetections && frameDetections.total_persons > 1) {
+                // Multiple people detected - show bulk labeling interface
+                this.setupBulkLabelingModal(face, frameDetections);
+            } else {
+                // Single person - show regular labeling interface
+                this.setupSingleLabelingModal(face);
+            }
+        } catch (error) {
+            console.error('Error setting up labeling modal:', error);
+            // Fallback to single person labeling
+            this.setupSingleLabelingModal(face);
+        }
+    }
+
+    async getFrameDetections(face) {
+        try {
+            const userId = this.currentAnalysisData.user_id;
+            const videoPath = face.videoPath || this.currentAnalysisData.video_path;
+            const frameNumber = face.frameNumber;
+            
+            const response = await fetch(
+                `${this.apiBaseUrl}/face-recognition/frame-detections/${userId}/${frameNumber}?video_path=${encodeURIComponent(videoPath)}`
+            );
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch frame detections: ${response.statusText}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching frame detections:', error);
+            return null;
+        }
+    }
+
+    setupSingleLabelingModal(face) {
         // Set face image
         if (face.visualizationUrl) {
             this.modalFaceImage.src = face.visualizationUrl;
@@ -478,15 +543,127 @@ class FaceRecognitionUI {
         // Update name suggestions
         this.updateNameSuggestions();
         
-        // Show modal
-        this.modal.classList.remove('hidden');
+        // Hide bulk labeling controls if they exist
+        this.hideBulkLabelingControls();
+        
+        // Show single person controls
+        this.showSingleLabelingControls();
+        
         this.personNameInput.focus();
+    }
+
+    setupBulkLabelingModal(face, frameDetections) {
+        // Set face image showing all detections
+        if (face.visualizationUrl) {
+            this.modalFaceImage.src = face.visualizationUrl;
+        }
+        
+        // Set frame number
+        this.modalFrameNumber.textContent = `${face.frameNumber} (${frameDetections.total_persons} people detected)`;
+        
+        // Hide single person controls
+        this.hideSingleLabelingControls();
+        
+        // Show bulk labeling controls
+        this.showBulkLabelingControls(frameDetections);
     }
 
     closeModal() {
         this.modal.classList.add('hidden');
         this.currentFaceData = null;
+        this.currentFrameDetections = null;
         this.personNameInput.value = '';
+        
+        // Clear bulk inputs
+        if (this.bulkPersonInputs) {
+            this.bulkPersonInputs.innerHTML = '';
+        }
+    }
+
+    showSingleLabelingControls() {
+        this.singleLabelingForm.classList.remove('hidden');
+    }
+
+    hideSingleLabelingControls() {
+        this.singleLabelingForm.classList.add('hidden');
+    }
+
+    showBulkLabelingControls(frameDetections) {
+        this.currentFrameDetections = frameDetections;
+        this.bulkLabelingForm.classList.remove('hidden');
+        this.createBulkPersonInputs(frameDetections);
+        this.updateBulkNameSuggestions();
+    }
+
+    hideBulkLabelingControls() {
+        this.bulkLabelingForm.classList.add('hidden');
+        this.currentFrameDetections = null;
+    }
+
+    createBulkPersonInputs(frameDetections) {
+        this.bulkPersonInputs.innerHTML = '';
+        
+        // Color names for display (matching the colors in the backend)
+        const colorNames = [
+            'Green', 'Blue', 'Red', 'Cyan', 'Magenta', 'Yellow',
+            'Purple', 'Orange', 'Light Blue', 'Lime', 'Deep Pink', 'Dark Turquoise'
+        ];
+        
+        frameDetections.detections.forEach((detection, index) => {
+            const colorName = colorNames[detection.person_id] || `Color ${detection.person_id}`;
+            
+            const personDiv = document.createElement('div');
+            personDiv.className = 'border border-gray-200 rounded-md p-4 bg-gray-50';
+            personDiv.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <label class="text-sm font-medium text-gray-700">
+                        Person ${detection.person_id} (${colorName} Box)
+                    </label>
+                    <span class="text-xs text-gray-500">
+                        Confidence: ${(detection.confidence * 100).toFixed(1)}%
+                    </span>
+                </div>
+                <input 
+                    type="text" 
+                    id="person-${detection.person_id}-name" 
+                    data-person-id="${detection.person_id}"
+                    data-bbox='${JSON.stringify(detection.bbox)}'
+                    data-detection-type="${detection.detection_type}"
+                    placeholder="Enter person's name" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue text-sm"
+                >
+            `;
+            
+            this.bulkPersonInputs.appendChild(personDiv);
+        });
+    }
+
+    updateBulkNameSuggestions() {
+        // Get unique names from labeled faces for bulk suggestions
+        const uniqueNames = [...new Set(
+            this.faceData
+                .filter(face => face.personName)
+                .map(face => face.personName)
+        )];
+
+        this.bulkNameSuggestions.innerHTML = '';
+        
+        uniqueNames.forEach(name => {
+            const button = document.createElement('button');
+            button.className = 'px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm hover:bg-gray-200 border border-gray-300 transition-colors';
+            button.textContent = name;
+            button.addEventListener('click', () => {
+                // Fill the first empty input with this name
+                const inputs = this.bulkPersonInputs.querySelectorAll('input[type="text"]');
+                for (const input of inputs) {
+                    if (!input.value.trim()) {
+                        input.value = name;
+                        break;
+                    }
+                }
+            });
+            this.bulkNameSuggestions.appendChild(button);
+        });
     }
 
     updateNameSuggestions() {
@@ -673,6 +850,104 @@ class FaceRecognitionUI {
         this.renderFaceGrid();
 
         alert(`Saved ${saved} faces. ${failed} failed.`);
+    }
+
+    async confirmBulkLabels() {
+        if (!this.currentFrameDetections) {
+            console.error('No frame detections available for bulk labeling');
+            return;
+        }
+
+        // Get all person inputs
+        const personInputs = this.bulkPersonInputs.querySelectorAll('input[type="text"]');
+        const personLabels = [];
+
+        // Collect labels from inputs
+        personInputs.forEach(input => {
+            const personName = input.value.trim();
+            if (personName) {
+                const personId = parseInt(input.dataset.personId);
+                const bbox = JSON.parse(input.dataset.bbox);
+                const detectionType = input.dataset.detectionType;
+
+                personLabels.push({
+                    person_id: personId,
+                    person_name: personName,
+                    bbox: bbox,
+                    detection_type: detectionType
+                });
+            }
+        });
+
+        if (personLabels.length === 0) {
+            alert('Please enter at least one person name');
+            return;
+        }
+
+        try {
+            // Call bulk labeling API
+            const payload = {
+                user_id: this.currentAnalysisData.user_id,
+                video_path: this.currentFaceData.videoPath || this.currentAnalysisData.video_path,
+                frame_number: this.currentFaceData.frameNumber,
+                person_labels: personLabels
+            };
+
+            console.log('Sending bulk labeling payload:', payload);
+
+            const response = await fetch(`${this.apiBaseUrl}/face-recognition/save-bulk-person-labels`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save bulk labels: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log('Bulk labeling result:', result);
+
+            // Update local data for all labeled persons
+            personLabels.forEach(personLabel => {
+                // Find and update face data matching this frame
+                const matchingFaces = this.faceData.filter(face => 
+                    face.frameNumber === this.currentFaceData.frameNumber &&
+                    face.videoPath === (this.currentFaceData.videoPath || this.currentAnalysisData.video_path)
+                );
+
+                matchingFaces.forEach(face => {
+                    face.labeled = true;
+                    face.personName = personLabel.person_name;
+                    face.status = 'labeled';
+                });
+            });
+
+            // Update UI
+            this.updateLabeledCount();
+            this.renderFaceGrid();
+            this.closeModal();
+
+            // Show success message
+            alert(`Successfully saved labels for ${personLabels.length} people!`);
+
+        } catch (error) {
+            console.error('Failed to save bulk labels:', error);
+            alert(`Failed to save bulk labels: ${error.message}`);
+        }
+    }
+
+    skipBulkLabels() {
+        if (!this.currentFaceData) {
+            return;
+        }
+
+        // Mark face as skipped
+        this.currentFaceData.status = 'skipped';
+        this.renderFaceGrid();
+        this.closeModal();
     }
 
     setAnalyzing(analyzing) {
