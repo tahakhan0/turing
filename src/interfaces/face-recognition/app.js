@@ -23,6 +23,7 @@ class FaceRecognitionUI {
         this.analyzeBtn = document.getElementById('analyze-video');
         this.analyzeText = document.getElementById('analyze-text');
         this.analyzeSpinner = document.getElementById('analyze-spinner');
+        this.continueToSegmentationBtn = document.getElementById('continue-to-segmentation');
         
         // Analysis type controls
         this.singleVideoOption = document.getElementById('single-video-option');
@@ -92,6 +93,9 @@ class FaceRecognitionUI {
 
         // Analyze video
         this.analyzeBtn.addEventListener('click', () => this.analyzeVideo());
+        
+        // Continue to segmentation
+        this.continueToSegmentationBtn.addEventListener('click', () => this.navigateToSegmentation());
 
         // Modal controls
         this.closeModalBtn.addEventListener('click', () => this.closeModal());
@@ -453,6 +457,11 @@ class FaceRecognitionUI {
     updateLabeledCount() {
         const labeled = this.faceData.filter(face => face.labeled).length;
         this.labeledFacesCount.textContent = labeled;
+        
+        // Enable continue button if we have analysis data and some faces are labeled
+        if (this.currentAnalysisData && labeled > 0) {
+            this.continueToSegmentationBtn.disabled = false;
+        }
     }
 
     renderFaceGrid() {
@@ -1242,6 +1251,29 @@ class FaceRecognitionUI {
 
     hideError() {
         this.errorState.classList.add('hidden');
+    }
+
+    navigateToSegmentation() {
+        if (!this.currentAnalysisData) {
+            alert('Please complete face recognition analysis first');
+            return;
+        }
+
+        const labeledCount = this.faceData.filter(face => face.labeled).length;
+        if (labeledCount === 0) {
+            alert('Please label at least one face before continuing to segmentation');
+            return;
+        }
+
+        // Navigate to segmentation interface with current data
+        const params = new URLSearchParams({
+            video_path: this.currentAnalysisData.video_path || this.videoPathInput.value.trim(),
+            user_id: this.currentAnalysisData.user_id,
+            service_url: this.apiBaseUrl,
+            faces_count: labeledCount.toString()
+        });
+
+        window.location.href = `../segmentation/index.html?${params.toString()}`;
     }
 }
 

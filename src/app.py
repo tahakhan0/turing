@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src.face_recognition import router as face_recognition_router
+from src.segmentation import router as segmentation_router
 import os
 
 app = FastAPI(title="Turing Service")
@@ -25,8 +26,9 @@ os.makedirs("/app/person_labels", exist_ok=True)
 # Mount static files
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Include the router from the face_recognition module
+# Include routers
 app.include_router(face_recognition_router.router, prefix="/face-recognition", tags=["Face Recognition"])
+app.include_router(segmentation_router.router, prefix="/segmentation", tags=["Segmentation"])
 
 @app.get("/")
 def read_root():

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turing AI - Area Segmentation Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#635bff',
+                        'brand-purple': '#7c3aed',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .area-card:hover {
+            transform: translateY(-2px);
+            transition: transform 0.2s ease-in-out;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #635bff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .segment-overlay {
+            position: absolute;
+            border: 2px solid;
+            background-color: rgba(255, 255, 255, 0.1);
+            pointer-events: none;
+        }
+        .progress-step {
+            transition: all 0.3s ease;
+        }
+        .progress-step.active {
+            background-color: #635bff;
+            color: white;
+        }
+        .progress-step.completed {
+            background-color: #10b981;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <h1 class="text-2xl font-bold text-brand-blue">Turing AI</h1>
+                        <p class="text-sm text-gray-500">Area Segmentation Studio</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="connection-status" class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-red-400 rounded-full"></div>
+                        <span class="text-sm text-gray-600">Disconnected</span>
+                    </div>
+                    <button id="back-to-faces" class="bg-gray-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-600 transition-colors">
+                        ← Back to Faces
+                    </button>
+                    <button id="continue-to-permissions" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Continue to Permissions →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Progress Bar -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-center space-x-8">
+                <div class="flex items-center">
+                    <div class="progress-step completed w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">1</div>
+                    <span class="ml-2 text-sm text-gray-600">Face Recognition</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="progress-step active w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">2</div>
+                    <span class="ml-2 text-sm text-gray-900 font-medium">Area Segmentation</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="progress-step w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">3</div>
+                    <span class="ml-2 text-sm text-gray-500">Access Permissions</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Setup Section -->
+        <div id="setup-section" class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center p-3 bg-brand-purple rounded-md shadow-lg mb-4">
+                    <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Area Detection & Segmentation</h2>
+                <p class="text-gray-600">Let our AI identify and segment different areas in your video frames</p>
+            </div>
+
+            <!-- Video Info Display -->
+            <div id="video-info" class="bg-gray-50 rounded-lg p-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">Video Path:</span>
+                        <p id="current-video-path" class="text-sm text-gray-900">Not selected</p>
+                    </div>
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">User ID:</span>
+                        <p id="current-user-id" class="text-sm text-gray-900">Not set</p>
+                    </div>
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">Labeled Faces:</span>
+                        <p id="labeled-faces-count" class="text-sm text-gray-900">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="space-y-4">
+                <!-- Frame Selection -->
+                <div>
+                    <label for="frame-number" class="block text-sm font-medium text-gray-700 mb-2">Select Frame to Analyze</label>
+                    <div class="flex space-x-4">
+                        <input type="number" id="frame-number" min="1" value="1" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                        <button id="random-frame" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-colors">
+                            Random Frame
+                        </button>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Choose a frame with clear view of different areas</p>
+                </div>
+
+                <!-- Detection Settings -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="box-threshold" class="block text-sm font-medium text-gray-700 mb-2">Detection Threshold</label>
+                        <input type="range" id="box-threshold" min="0.1" max="0.9" step="0.1" value="0.3" class="w-full">
+                        <span class="text-xs text-gray-500">Current: <span id="box-threshold-value">0.3</span></span>
+                    </div>
+                    <div>
+                        <label for="text-threshold" class="block text-sm font-medium text-gray-700 mb-2">Text Threshold</label>
+                        <input type="range" id="text-threshold" min="0.1" max="0.9" step="0.1" value="0.25" class="w-full">
+                        <span class="text-xs text-gray-500">Current: <span id="text-threshold-value">0.25</span></span>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="service-url" class="block text-sm font-medium text-gray-700 mb-2">Service URL</label>
+                    <input type="text" id="service-url" value="http://localhost:8000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                </div>
+            </div>
+            
+            <div class="text-center mt-6">
+                <button id="start-segmentation" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-brand-purple hover:bg-brand-blue focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                    <span id="segment-text">Start Area Detection</span>
+                    <div id="segment-spinner" class="loading-spinner hidden ml-2"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="hidden">
+            <!-- Segmentation Summary -->
+            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+                <h2 class="text-lg font-medium text-gray-900 mb-6">Segmentation Results</h2>
+                <div id="segmentation-summary" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-brand-purple" id="total-areas">0</div>
+                        <div class="text-sm text-gray-600">Areas Detected</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-green-600" id="verified-areas">0</div>
+                        <div class="text-sm text-gray-600">Areas Verified</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-orange-600" id="area-types">0</div>
+                        <div class="text-sm text-gray-600">Area Types</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-blue-600" id="total-area-size">0</div>
+                        <div class="text-sm text-gray-600">Total Area (m²)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Frame Visualization -->
+            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-medium text-gray-900">Frame Analysis</h2>
+                    <div class="flex space-x-2">
+                        <button id="show-original" class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600 transition-colors">
+                            Original
+                        </button>
+                        <button id="show-segmented" class="bg-brand-purple text-white px-3 py-1 rounded text-sm hover:bg-brand-blue transition-colors">
+                            Segmented
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="frame-container" class="relative max-w-full mx-auto">
+                    <img id="frame-image" src="" alt="Video frame" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
+                    <canvas id="segmentation-overlay" class="absolute top-0 left-0 pointer-events-none"></canvas>
+                </div>
+            </div>
+
+            <!-- Areas Grid -->
+            <div class="bg-white rounded-lg border border-gray-200 p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-medium text-gray-900">Detected Areas</h2>
+                    <button id="verify-all" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50">
+                        Verify All Areas
+                    </button>
+                </div>
+                
+                <!-- Filter Controls -->
+                <div class="flex space-x-4 mb-6">
+                    <select id="filter-area-type" class="appearance-none px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                        <option value="all">All Area Types</option>
+                        <option value="backyard">Backyard</option>
+                        <option value="pool">Pool</option>
+                        <option value="garage">Garage</option>
+                        <option value="road">Road</option>
+                        <option value="driveway">Driveway</option>
+                        <option value="front_yard">Front Yard</option>
+                        <option value="lawn">Lawn</option>
+                        <option value="patio">Patio</option>
+                        <option value="deck">Deck</option>
+                        <option value="fence">Fence</option>
+                    </select>
+                    <select id="filter-verification" class="appearance-none px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                        <option value="all">All Areas</option>
+                        <option value="verified">Verified</option>
+                        <option value="unverified">Unverified</option>
+                    </select>
+                </div>
+
+                <!-- Areas Grid -->
+                <div id="areas-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <!-- Area cards will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="hidden text-center py-12">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Analyzing areas...</h3>
+            <p class="text-gray-600">Our AI is detecting and segmenting areas in your video frame</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-md p-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800">Error</h3>
+                    <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Area Verification Modal -->
+    <div id="verification-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Verify Area Detection</h3>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Area Details Display -->
+                <div class="mb-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Area Type:</span>
+                                <p id="modal-area-type" class="text-sm text-gray-900 capitalize"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Confidence:</span>
+                                <p id="modal-confidence" class="text-sm text-gray-900"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Dimensions:</span>
+                                <p id="modal-dimensions" class="text-sm text-gray-900"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Area:</span>
+                                <p id="modal-area-size" class="text-sm text-gray-900"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Area Image Display -->
+                <div class="mb-6 text-center">
+                    <div id="modal-area-preview" class="relative max-w-full mx-auto">
+                        <img id="modal-area-image" src="" alt="Area preview" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
+                        <canvas id="modal-overlay-canvas" class="absolute top-0 left-0 pointer-events-none"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Verification Form -->
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Is this area correctly identified?</label>
+                        <p class="text-sm text-gray-600 mb-4">Review the highlighted area and confirm if the AI correctly identified this space.</p>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex space-x-3 pt-4">
+                        <button id="verify-area" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                            ✓ Verify Area
+                        </button>
+                        <button id="reject-area" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                            ✗ Reject Area
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

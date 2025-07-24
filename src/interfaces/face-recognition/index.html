@@ -34,6 +34,17 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .progress-step {
+            transition: all 0.3s ease;
+        }
+        .progress-step.active {
+            background-color: #635bff;
+            color: white;
+        }
+        .progress-step.completed {
+            background-color: #10b981;
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -55,10 +66,35 @@
                     <button id="upload-btn" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors">
                         Analyze Video
                     </button>
+                    <button id="continue-to-segmentation" class="bg-brand-purple text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Continue to Areas →
+                    </button>
                 </div>
             </div>
         </div>
     </nav>
+
+    <!-- Progress Bar -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-center space-x-8">
+                <div class="flex items-center">
+                    <div class="w-8 h-8 rounded-full bg-brand-blue text-white flex items-center justify-center text-sm font-medium">1</div>
+                    <span class="ml-2 text-sm text-gray-900 font-medium">Face Recognition</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">2</div>
+                    <span class="ml-2 text-sm text-gray-500">Area Segmentation</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">3</div>
+                    <span class="ml-2 text-sm text-gray-500">Access Permissions</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
