@@ -1,8 +1,3 @@
-# This file is a renamed version of your original face_recognition_service.py
-# The content remains the same, but it's now part of a module.
-# Ensure the imports within this file are correct. For example, if it uses
-# yolo_service, it should be: from . import yolo_service
-
 import face_recognition
 import cv2
 import os
@@ -10,52 +5,52 @@ import json
 import numpy as np
 from .yolo_service import yolo_model
 from .schemas import FaceRecognitionAnalysis, RecognizedFace, UnrecognizedFace, BoundingBox, FaceRecognitionFrame, FaceInFrame
+from ..storage.persistent_storage import PersistentStorage
 
-# Use absolute path for face encodings file
-FACE_ENCODINGS_FILE = "/app/face_encodings/encodings.json"
+# Initialize persistent storage
+storage = PersistentStorage()
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 VISUALIZATIONS_DIR = "/app/static/visualizations"
 
-def load_known_faces():
-    if not os.path.exists(FACE_ENCODINGS_FILE):
+def load_known_faces(user_id):
+    """Load known faces for a specific user from persistent storage"""
+    encodings_data = storage.load_face_encodings(user_id)
+    if not encodings_data:
         return [], []
-    with open(FACE_ENCODINGS_FILE, "r") as f:
-        data = json.load(f)
-    known_face_encodings = [np.array(e) for e in data["encodings"]]
-    known_face_names = data["names"]
+    
+    known_face_encodings = [np.array(e) for e in encodings_data.get("encodings", [])]
+    known_face_names = encodings_data.get("names", [])
     return known_face_encodings, known_face_names
 
-def save_unrecognized_face(user_id, name, encoding):
-    os.makedirs(os.path.dirname(FACE_ENCODINGS_FILE), exist_ok=True)
-    try:
-        with open(FACE_ENCODINGS_FILE, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {"names": [], "encodings": []}
-
-    data["names"].append(name)
-    data["encodings"].append(encoding)
-
-    with open(FACE_ENCODINGS_FILE, "w") as f:
-        json.dump(data, f)
+def save_face_encoding(user_id, name, encoding):
+    """Save a face encoding for a specific user to persistent storage"""
+    # Load existing encodings
+    encodings_data = storage.load_face_encodings(user_id)
+    if not encodings_data:
+        encodings_data = {"names": [], "encodings": []}
+    
+    # Check if this person already exists
+    if name in encodings_data["names"]:
+        # Update existing encoding
+        index = encodings_data["names"].index(name)
+        encodings_data["encodings"][index] = encoding
+    else:
+        # Add new encoding
+        encodings_data["names"].append(name)
+        encodings_data["encodings"].append(encoding)
+    
+    # Save back to storage
+    storage.save_face_encodings(user_id, encodings_data)
 
 def save_person_label(user_id, video_path, frame_number, bbox, person_name):
     """
     Save a person label for a detected person in a specific frame.
     This creates a record and extracts face encoding for future recognition.
     """
-    # Create labels directory
-    labels_dir = "/app/person_labels"
-    os.makedirs(labels_dir, exist_ok=True)
-    
-    # Create user-specific labels file
-    labels_file = os.path.join(labels_dir, f"{user_id}_labels.json")
-    
-    try:
-        with open(labels_file, "r") as f:
-            labels_data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        labels_data = {"labels": []}
+    # Load existing labels from persistent storage
+    labels_data = storage.load_face_labels(user_id)
+    if not labels_data:
+        labels_data = {"labeled_faces": []}
     
     # Try to extract face encoding from the video frame
     face_encoding = None
@@ -79,8 +74,8 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
                     if face_encodings:
                         face_encoding = face_encodings[0]  # Use the first face found
                         
-                        # Save the face encoding to the main encodings file
-                        save_unrecognized_face(user_id, person_name, face_encoding.tolist())
+                        # Save the face encoding to persistent storage
+                        save_face_encoding(user_id, person_name, face_encoding.tolist())
                         print(f"Successfully extracted and saved face encoding for {person_name}")
             
             cap.release()
@@ -98,7 +93,7 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
     }
     
     # Check if this exact detection already exists (same video, frame, bbox)
-    for existing_label in labels_data["labels"]:
+    for existing_label in labels_data["labeled_faces"]:
         if (existing_label["video_path"] == video_path and 
             existing_label["frame_number"] == frame_number and
             existing_label["bbox"] == bbox):
@@ -109,11 +104,10 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
             break
     else:
         # Add new label
-        labels_data["labels"].append(label_entry)
+        labels_data["labeled_faces"].append(label_entry)
     
-    # Save updated labels
-    with open(labels_file, "w") as f:
-        json.dump(labels_data, f, indent=2)
+    # Save updated labels to persistent storage
+    storage.save_face_labels(user_id, labels_data)
     
     # Auto-update body embeddings if face encoding wasn't saved
     if face_encoding is None:
@@ -222,7 +216,7 @@ def analyze_video_with_recognition(video_path, user_id):
     if not cap.isOpened():
         raise ValueError("Error opening video file")
 
-    known_face_encodings, known_face_names = load_known_faces()
+    known_face_encodings, known_face_names = load_known_faces(user_id)
     frame_analyses = []
     total_frames = 0
     processed_frames = 0

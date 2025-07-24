@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  turing-service:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount persistent storage directory
+      - /Users/tahakhan/Desktop/home-security-db:/Users/tahakhan/Desktop/home-security-db
+      # Mount ring camera videos directory
+      - /Users/tahakhan/Desktop/ring_camera:/Users/tahakhan/Desktop/ring_camera
+      # Mount static files for serving extracted frames and visualizations
+      - ./static:/app/static
+    environment:
+      - PYTHONPATH=/app/Grounded-Segment-Anything:/app/Grounded-Segment-Anything/GroundingDINO
+      - BASE_URL=http://localhost:8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/face-recognition/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

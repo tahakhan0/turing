@@ -5,6 +5,7 @@ import requests
 
 from .schemas import SegmentedArea, ResidentPermission
 from .enums import AreaType, PermissionCondition
+from ..storage.persistent_storage import PersistentStorage
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,15 @@ class SegmentManager:
         self.segments: Dict[str, SegmentedArea] = {}
         self.permissions: List[ResidentPermission] = []
         self.face_recognition_base_url = face_recognition_base_url
+        self.storage = PersistentStorage()
+        self._users_loaded = set()  # Track which users' data has been loaded
     
     def add_segment(self, segment_data: Dict[str, Any], user_id: str) -> str:
         """Add a new segment from segmentation results"""
         try:
+            # Load user data if not already loaded
+            self._load_user_data(user_id)
+            
             # Convert area_type string back to enum
             area_type = AreaType(segment_data['area_type'])
             
@@ -33,6 +39,8 @@ class SegmentManager:
             )
             
             self.segments[segment.area_id] = segment
+            self._save_user_data(user_id)
+            
             return segment.area_id
             
         except Exception as e:
@@ -59,6 +67,9 @@ class SegmentManager:
     
     def verify_segment(self, area_id: str, user_id: str, approved: bool) -> Dict[str, Any]:
         """User verification of segmented area"""
+        # Load user data if not already loaded
+        self._load_user_data(user_id)
+        
         if area_id not in self.segments:
             return {"error": "Segment not found"}
         
@@ -69,16 +80,21 @@ class SegmentManager:
         if approved:
             segment.verified = True
             segment.updated_at = datetime.now()
+            self._save_user_data(user_id)
             return {"status": "success", "message": "Segment verified"}
         else:
             # Remove unverified segment
             del self.segments[area_id]
             # Also remove any permissions for this area
             self.permissions = [p for p in self.permissions if p.area_id != area_id]
+            self._save_user_data(user_id)
             return {"status": "success", "message": "Segment rejected and removed"}
     
     def get_user_segments(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all segments for a specific user"""
+        # Load user data if not already loaded
+        self._load_user_data(user_id)
+        
         user_segments = []
         for segment in self.segments.values():
             if segment.user_id == user_id:
@@ -93,6 +109,92 @@ class SegmentManager:
                     "updated_at": segment.updated_at.isoformat()
                 })
         return user_segments
+    
+    def _load_user_data(self, user_id: str):
+        """Load segments and permissions for a user from persistent storage"""
+        if user_id in self._users_loaded:
+            return
+        
+        # Load segmentation data
+        seg_data = self.storage.load_segmentation_data(user_id)
+        
+        # Load segments
+        for segment_data in seg_data.get("segments", []):
+            try:
+                area_type = AreaType(segment_data['area_type'])
+                segment = SegmentedArea(
+                    area_id=segment_data['area_id'],
+                    area_type=area_type,
+                    polygon=segment_data['polygon'],
+                    confidence=segment_data['confidence'],
+                    dimensions=segment_data['dimensions'],
+                    user_id=user_id,
+                    verified=segment_data.get('verified', False),
+                    created_at=datetime.fromisoformat(segment_data.get('created_at', datetime.now().isoformat())),
+                    updated_at=datetime.fromisoformat(segment_data.get('updated_at', datetime.now().isoformat()))
+                )
+                self.segments[segment.area_id] = segment
+            except Exception as e:
+                logger.error(f"Error loading segment {segment_data.get('area_id', 'unknown')}: {str(e)}")
+        
+        # Load permissions
+        for perm_data in seg_data.get("permissions", []):
+            try:
+                conditions = [PermissionCondition(c) for c in perm_data.get('conditions', [])]
+                permission = ResidentPermission(
+                    person_name=perm_data['person_name'],
+                    user_id=perm_data['user_id'],
+                    area_id=perm_data['area_id'],
+                    allowed=perm_data['allowed'],
+                    conditions=conditions,
+                    created_at=datetime.fromisoformat(perm_data.get('created_at', datetime.now().isoformat()))
+                )
+                self.permissions.append(permission)
+            except Exception as e:
+                logger.error(f"Error loading permission: {str(e)}")
+        
+        self._users_loaded.add(user_id)
+        logger.info(f"Loaded data for user {user_id}")
+    
+    def _save_user_data(self, user_id: str):
+        """Save segments and permissions for a user to persistent storage"""
+        # Prepare segments data
+        user_segments = []
+        for segment in self.segments.values():
+            if segment.user_id == user_id:
+                user_segments.append({
+                    "area_id": segment.area_id,
+                    "area_type": segment.area_type.value,
+                    "polygon": segment.polygon,
+                    "confidence": segment.confidence,
+                    "dimensions": segment.dimensions,
+                    "user_id": segment.user_id,
+                    "verified": segment.verified,
+                    "created_at": segment.created_at.isoformat(),
+                    "updated_at": segment.updated_at.isoformat()
+                })
+        
+        # Prepare permissions data
+        user_permissions = []
+        for permission in self.permissions:
+            if permission.user_id == user_id:
+                user_permissions.append({
+                    "person_name": permission.person_name,
+                    "user_id": permission.user_id,
+                    "area_id": permission.area_id,
+                    "allowed": permission.allowed,
+                    "conditions": [c.value for c in permission.conditions],
+                    "created_at": permission.created_at.isoformat()
+                })
+        
+        # Save to storage
+        segmentation_data = {
+            "segments": user_segments,
+            "permissions": user_permissions
+        }
+        
+        self.storage.save_segmentation_data(user_id, segmentation_data)
+        logger.info(f"Saved data for user {user_id}")
     
     def get_labeled_people(self, user_id: str) -> List[str]:
         """Fetch labeled faces from face recognition service to get list of known people"""
@@ -122,6 +224,9 @@ class SegmentManager:
     def add_person_permission(self, person_name: str, user_id: str, area_id: str, allowed: bool, 
                               conditions: List[str] = None) -> Dict[str, Any]:
         """Add access permission for a labeled person to a specific area or all areas"""
+        # Load user data if not already loaded
+        self._load_user_data(user_id)
+        
         if area_id != "all" and area_id not in self.segments:
             return {"error": "Area not found"}
         
@@ -151,11 +256,15 @@ class SegmentManager:
                           if not (p.person_name == person_name and p.user_id == user_id and p.area_id == area_id)]
         
         self.permissions.append(permission)
+        self._save_user_data(user_id)
         
         return {"status": "success", "message": "Permission added"}
     
     def check_access(self, person_name: str, user_id: str, area_id: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Check if a labeled person has access to a specific area"""
+        # Load user data if not already loaded
+        self._load_user_data(user_id)
+        
         if area_id not in self.segments:
             return {"allowed": False, "reason": "Area not found"}
         
@@ -243,11 +352,15 @@ class SegmentManager:
     
     def remove_permission(self, person_name: str, user_id: str, area_id: str) -> Dict[str, Any]:
         """Remove a specific permission"""
+        # Load user data if not already loaded
+        self._load_user_data(user_id)
+        
         initial_count = len(self.permissions)
         self.permissions = [p for p in self.permissions 
                           if not (p.person_name == person_name and p.user_id == user_id and p.area_id == area_id)]
         
         if len(self.permissions) < initial_count:
+            self._save_user_data(user_id)
             return {"status": "success", "message": "Permission removed"}
         else:
             return {"error": "Permission not found"}
