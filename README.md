@@ -1,20 +1,21 @@
-# AI Security Worker
+# Turing AI - Home Security System
 
-This project provides a background worker service designed for processing security camera footage. It uses FastAPI for the web framework and Celery for asynchronous task processing. The service can perform two main functions:
+This project provides a comprehensive home security system with face recognition and area segmentation capabilities. It uses FastAPI for the web framework and includes web interfaces for easy interaction. The system can perform three main functions:
 
-1.  **Resident Enrollment**: Scans videos to detect and save unique faces for building a dataset of known residents.
-2.  **Security Monitoring**: Analyzes videos to detect strangers in predefined zones and sends alerts if rules are violated.
+1.  **Face Recognition**: Detect and label people in security camera footage to build a resident database
+2.  **Area Segmentation**: Automatically detect and segment different areas (backyard, pool, garage, etc.) in your property
+3.  **Access Control**: Manage permissions for residents to access different areas with conditional rules
 
 ---
 
 ## Architecture
 
--   **FastAPI**: Provides a basic web server and health check endpoints.
--   **Celery**: Manages the asynchronous processing of long-running video analysis tasks.
--   **Redis**: Acts as the message broker and backend for Celery, queuing tasks sent from your main application (e.g., a Django backend).
--   **Docker**: Containerizes the entire service, including all dependencies and models, for consistent and easy deployment.
--   **YOLOv8**: A fast and accurate object detection model used to find people in video frames.
--   **face_recognition**: A library for finding and encoding human faces.
+-   **FastAPI**: Provides REST API endpoints and serves web interfaces
+-   **Face Recognition**: YOLOv8 + face_recognition library for detecting and recognizing people
+-   **Area Segmentation**: Grounded-SAM (Grounding DINO + Segment Anything Model) for property area detection
+-   **Persistent Storage**: File-based storage system that survives Docker container restarts
+-   **Docker**: Containerizes the entire service with all AI models and dependencies
+-   **Web Interfaces**: Interactive UIs for face labeling, area verification, and permission management
 
 ---
 
@@ -146,53 +147,78 @@ def trigger_monitoring_task(user_id, video_path, zones, rules):
 
 ## Local Development
 
-For local development, you have two options: run the service directly or use Docker.
+### Quick Start with Docker Compose (Recommended)
 
-### Option A: Run Service Directly (No Docker)
+The easiest way to run the service locally is using Docker Compose with persistent storage:
+
+```bash
+# Build and run in foreground (with logs visible in terminal)
+docker-compose up --build
+
+# Or run without rebuilding (if no code changes)
+docker-compose up
+
+# Run in background (detached from terminal)
+docker-compose up -d --build
+```
+
+**What this does:**
+- Builds the Docker image with all AI models
+- Mounts your Ring camera videos from `/Users/tahakhan/Desktop/ring_camera/`
+- Mounts persistent storage to `/Users/tahakhan/Desktop/home-security-db/`
+- Starts the service on `http://localhost:8000`
+- Keeps your face recognition labels and area segmentation data safe across restarts
+
+**Stop the service:**
+```bash
+# Stop running containers
+docker-compose down
+
+# View logs of running service
+docker-compose logs -f
+```
+
+### Docker Commands Reference
+
+| Command | Build | Run | Foreground/Background |
+|---------|-------|-----|---------------------|
+| `docker-compose up --build` | ✅ Yes | ✅ Yes | 🖥️ Foreground |
+| `docker-compose up` | ⚠️ Only if needed | ✅ Yes | 🖥️ Foreground |
+| `docker-compose up -d --build` | ✅ Yes | ✅ Yes | 🔄 Background |
+| `docker-compose up -d` | ⚠️ Only if needed | ✅ Yes | 🔄 Background |
+
+### Alternative: Run Service Directly (No Docker)
 
 ```bash
 # Activate virtual environment and install dependencies
 source .venv/bin/activate
 uv pip install -r requirements.txt
 
-# Set environment for local development
-export ENV=local
-
 # Start the FastAPI server
-uvicorn src.app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn src.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Option B: Run Service with Docker
+### Web Interfaces
 
-**For development endpoints (no Redis/Celery needed):**
-```bash
-# Build the image
-docker build -t turing .
+Once the service is running, access the web interfaces at:
 
-# Run just the FastAPI server
-docker run --rm --name turing-face-worker \
-  -e ENV="local" \
-  -p 8000:8000 \
-  turing uvicorn src.app:app --host 0.0.0.0 --port 8000
-```
+- **Face Recognition Studio**: `http://localhost:8000/interfaces/face-recognition/`
+  - Upload and analyze videos for face detection
+  - Label detected faces to build your resident database
+  - View analysis results and manage face encodings
 
-**For full setup with Redis/Celery (production endpoints):**
-```bash
-# Build the image
-docker build -t turing .
+- **Area Segmentation Studio**: `http://localhost:8000/interfaces/segmentation/`
+  - Automatically detect areas in your property (backyard, pool, garage, etc.)
+  - Verify and approve detected areas
+  - Set up access permissions for labeled residents
 
-# Start Redis
-docker run -d --name redis-server -p 6379:6379 redis
+### API Documentation
 
-# Run the worker container
-docker run --rm --name turing-face-worker \
-  -e REDIS_URL="redis://host.docker.internal:6379/0" \
-  -e ENV="local" \
-  -p 8000:8000 \
-  turing
-```
+- **Interactive API Docs**: `http://localhost:8000/docs`
+- **Face Recognition API**: `http://localhost:8000/face-recognition/*`
+- **Segmentation API**: `http://localhost:8000/segmentation/*`
 
-### 2. Use the Client
+### Legacy Client Usage
 
 The project includes a Python client (`src/app/client.py`) for easy interaction:
 
