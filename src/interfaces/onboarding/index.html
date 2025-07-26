@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alan - Every person, every package, every detail. Identified.</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#635bff',
+                        'brand-purple': '#7c3aed',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-white">
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <h1 class="text-2xl font-bold text-brand-blue">Alan</h1>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="signup.html" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors">
+                        Get started
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <main class="relative">
+        <!-- Background gradient - only for hero section -->
+        <div class="absolute top-0 left-0 right-0 h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-100"></div>
+        
+        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+            <div class="text-center">
+                <h1 class="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
+                    <span class="block">Every person, every package,</span>
+                    <span class="block text-brand-blue">every detail. Identified.</span>
+                </h1>
+                <p class="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+                    Advanced facial recognition and behavioral analysis to protect what matters most. Alan AI learns your patterns and detects anomalies in real-time.
+                </p>
+                <div class="mt-5 max-w-md mx-auto sm:flex sm:justify-center md:mt-8">
+                    <div class="rounded-md shadow">
+                        <a href="signup.html" class="w-full flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-blue hover:bg-brand-purple transition-colors">
+                            Start protecting now
+                        </a>
+                    </div>
+                    <div class="mt-3 rounded-md shadow sm:mt-0 sm:ml-3">
+                        <a href="#demo" class="w-full flex items-center justify-center px-6 py-2 border border-transparent text-sm font-medium rounded-md text-brand-blue bg-white hover:bg-gray-50 transition-colors">
+                            See live demo
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Demo Section -->
+        <div id="demo" class="relative bg-gray-50 py-16 sm:py-24 lg:py-32">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-base font-semibold tracking-wider text-brand-blue uppercase">Live Detection</h2>
+                    <p class="mt-2 text-3xl font-extrabold text-gray-900 tracking-tight sm:text-4xl">
+                        Alan in Action
+                    </p>
+                    <p class="mt-5 max-w-prose mx-auto text-xl text-gray-500">
+                        Watch how Alan identified an unknown person and instantly sent a notification
+                    </p>
+                </div>
+                
+                <div class="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                    <!-- Fake Video Frame -->
+                    <div class="relative">
+                        <div class="bg-black rounded-lg overflow-hidden shadow-xl">
+                            <div class="aspect-w-16 aspect-h-9 bg-gray-900 relative">
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-full h-64 bg-gradient-to-br from-blue-900 to-purple-900 relative">
+                                        <!-- Fake person detection box -->
+                                        <div class="absolute top-12 left-16 w-24 h-32 border-2 border-red-500 rounded">
+                                            <div class="absolute -top-6 left-0 bg-red-500 text-white px-2 py-1 rounded text-xs font-mono">
+                                                Unknown Person
+                                            </div>
+                                        </div>
+                                        <!-- Fake package detection box -->
+                                        <div class="absolute bottom-16 right-20 w-16 h-12 border-2 border-green-500 rounded">
+                                            <div class="absolute -top-6 left-0 bg-green-500 text-white px-2 py-1 rounded text-xs font-mono">
+                                                Package
+                                            </div>
+                                        </div>
+                                        <!-- Timestamp -->
+                                        <div class="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                                            2024-01-26 14:32:18
+                                        </div>
+                                        <!-- Recording indicator -->
+                                        <div class="absolute top-2 right-2 flex items-center space-x-1">
+                                            <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                            <span class="text-white text-xs">LIVE</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="absolute -bottom-4 -right-4 bg-white rounded-lg shadow-lg p-3">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span class="text-xs font-medium text-gray-700">AI Active</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notification Panel -->
+                    <div class="space-y-4">
+                        <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900">
+                                        Unknown Person Detected
+                                    </p>
+                                    <p class="text-sm text-gray-500">
+                                        Front door camera • Just now
+                                    </p>
+                                    <p class="mt-2 text-sm text-gray-700">
+                                        Alan detected an unrecognized individual at your front entrance. Review footage and take action.
+                                    </p>
+                                    <div class="mt-3 flex space-x-2">
+                                        <button class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-brand-blue hover:bg-brand-purple">
+                                            View Details
+                                        </button>
+                                        <button class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M9 5v6" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900">
+                                        Package Delivered
+                                    </p>
+                                    <p class="text-sm text-gray-500">
+                                        Front door camera • 2 minutes ago
+                                    </p>
+                                    <p class="mt-2 text-sm text-gray-700">
+                                        Amazon package detected and delivery confirmed. Package appears secure.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-brand-blue rounded-lg p-6 text-white">
+                            <h3 class="text-lg font-medium">Instant Notifications</h3>
+                            <p class="mt-2 text-brand-blue-100">Get alerted immediately when Alan detects people, packages, or suspicious activity. Available on mobile, desktop, and smart home devices.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features grid -->
+        <div id="features" class="relative bg-white py-16 sm:py-24 lg:py-32">
+            <div class="mx-auto max-w-md px-4 text-center sm:max-w-3xl sm:px-6 lg:px-8 lg:max-w-7xl">
+                <h2 class="text-base font-semibold tracking-wider text-brand-blue uppercase">Revolutionary Technology</h2>
+                <p class="mt-2 text-3xl font-extrabold text-gray-900 tracking-tight sm:text-4xl">
+                    How Alan identifies everything
+                </p>
+                <p class="mt-5 max-w-prose mx-auto text-xl text-gray-500">
+                    Our advanced neural networks analyze visual data in real-time to provide unprecedented security intelligence.
+                </p>
+                <div class="mt-12">
+                    <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="pt-6">
+                            <div class="flow-root bg-gray-50 rounded-lg px-6 pb-8">
+                                <div class="-mt-6">
+                                    <div>
+                                        <span class="inline-flex items-center justify-center p-3 bg-brand-blue rounded-md shadow-lg">
+                                            <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            </svg>
+                                        </span>
+                                    </div>
+                                    <h3 class="mt-8 text-lg font-medium text-gray-900 tracking-tight">Person Recognition</h3>
+                                    <p class="mt-5 text-base text-gray-500">
+                                        Advanced biometric analysis recognizes family members and authorized individuals while detecting unknown faces instantly.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-6">
+                            <div class="flow-root bg-gray-50 rounded-lg px-6 pb-8">
+                                <div class="-mt-6">
+                                    <div>
+                                        <span class="inline-flex items-center justify-center p-3 bg-brand-blue rounded-md shadow-lg">
+                                            <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M9 5v6" />
+                                            </svg>
+                                        </span>
+                                    </div>
+                                    <h3 class="mt-8 text-lg font-medium text-gray-900 tracking-tight">Package Detection</h3>
+                                    <p class="mt-5 text-base text-gray-500">
+                                        Smart object recognition identifies packages, deliveries, and suspicious items with precision accuracy.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-6">
+                            <div class="flow-root bg-gray-50 rounded-lg px-6 pb-8">
+                                <div class="-mt-6">
+                                    <div>
+                                        <span class="inline-flex items-center justify-center p-3 bg-brand-blue rounded-md shadow-lg">
+                                            <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                        </span>
+                                    </div>
+                                    <h3 class="mt-8 text-lg font-medium text-gray-900 tracking-tight">Real-time Analysis</h3>
+                                    <p class="mt-5 text-base text-gray-500">
+                                        Edge computing delivers instant analysis and alerts with millisecond response times for every detail.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contact Section -->
+        <div class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 py-12 sm:py-16">
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 sm:text-3xl">
+                        Get in touch with Alan
+                    </h2>
+                    <p class="mt-3 text-base text-gray-700 max-w-2xl mx-auto">
+                        Ready to secure your space with AI? Drop us a line.
+                    </p>
+                </div>
+                
+                <div class="max-w-md mx-auto">
+                    <form id="contactForm" class="bg-white/80 backdrop-blur-sm border border-white/50 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+                        <div class="space-y-4">
+                            <div>
+                                <input 
+                                    type="email" 
+                                    id="email" 
+                                    name="email" 
+                                    required
+                                    class="w-full px-4 py-3 bg-white/90 border border-gray-200/50 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent focus:bg-white transition-all duration-200"
+                                    placeholder="your@email.com"
+                                />
+                            </div>
+                            
+                            <div>
+                                <textarea 
+                                    id="message" 
+                                    name="message" 
+                                    rows="3"
+                                    class="w-full px-4 py-3 bg-white/90 border border-gray-200/50 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent focus:bg-white transition-all duration-200 resize-none"
+                                    placeholder="Tell us about your security needs... (optional)"
+                                ></textarea>
+                            </div>
+                            
+                            <button 
+                                type="submit" 
+                                class="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-blue hover:bg-brand-purple text-white text-sm font-medium rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-all duration-200 transform hover:scale-[1.02]"
+                            >
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                </svg>
+                                Contact Alan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900">
+        <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:py-16 lg:px-8">
+            <div class="xl:grid xl:grid-cols-3 xl:gap-8">
+                <!-- Company Info -->
+                <div class="space-y-8 xl:col-span-1">
+                    <div>
+                        <h3 class="text-2xl font-bold text-brand-blue">Alan</h3>
+                        <p class="mt-2 text-base text-gray-300">
+                            Every person, every package, every detail. Identified.
+                        </p>
+                    </div>
+                    <div class="flex space-x-6">
+                        <a href="#" class="text-gray-400 hover:text-gray-300">
+                            <span class="sr-only">Twitter</span>
+                            <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+                            </svg>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-gray-300">
+                            <span class="sr-only">GitHub</span>
+                            <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+                            </svg>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-gray-300">
+                            <span class="sr-only">LinkedIn</span>
+                            <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path fill-rule="evenodd" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" clip-rule="evenodd" />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Navigation Links -->
+                <div class="mt-12 grid grid-cols-2 gap-8 xl:mt-0 xl:col-span-2">
+                    <div class="md:grid md:grid-cols-2 md:gap-8">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-400 tracking-wider uppercase">Product</h3>
+                            <ul class="mt-4 space-y-4">
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Features</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Pricing</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">API</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Integrations</a></li>
+                            </ul>
+                        </div>
+                        <div class="mt-12 md:mt-0">
+                            <h3 class="text-sm font-semibold text-gray-400 tracking-wider uppercase">Resources</h3>
+                            <ul class="mt-4 space-y-4">
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Documentation</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Blog</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Case Studies</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Status</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="md:grid md:grid-cols-2 md:gap-8">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-400 tracking-wider uppercase">Company</h3>
+                            <ul class="mt-4 space-y-4">
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">About</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Careers</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Press</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Partners</a></li>
+                            </ul>
+                        </div>
+                        <div class="mt-12 md:mt-0">
+                            <h3 class="text-sm font-semibold text-gray-400 tracking-wider uppercase">Legal</h3>
+                            <ul class="mt-4 space-y-4">
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Privacy</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Terms</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Cookie Policy</a></li>
+                                <li><a href="#" class="text-base text-gray-300 hover:text-white">Responsible AI</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Section -->
+            <div class="mt-12 border-t border-gray-700 pt-8">
+                <div class="text-center">
+                    <p class="text-base text-gray-400">
+                        &copy; 2025 Alan AI Security. All rights reserved. Built with responsibility and privacy in mind.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Contact form handling
+        document.getElementById('contactForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const message = document.getElementById('message').value;
+            
+            // Store contact info (in real app, this would send to server)
+            const contactData = {
+                email: email,
+                message: message,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Show success message
+            const button = e.target.querySelector('button[type="submit"]');
+            const originalText = button.textContent;
+            button.textContent = 'Message Sent!';
+            button.classList.add('bg-green-600');
+            button.disabled = true;
+            
+            // Reset form after delay
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('bg-green-600');
+                button.disabled = false;
+                document.getElementById('contactForm').reset();
+            }, 3000);
+        });
+    </script>
+</body>
+</html>

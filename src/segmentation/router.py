@@ -5,7 +5,7 @@ import os
 import tempfile
 import logging
 
-from .service import SegmentationService
+from .external_service import ExternalSegmentationService  
 from .segment_manager import SegmentManager
 from .schemas import (
     SegmentationRequest, SegmentationResponse, VerificationRequest,
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize services
-segmentation_service = SegmentationService()
+segmentation_service = ExternalSegmentationService()
 segment_manager = SegmentManager()
 
 @router.post("/segment", response_model=SegmentationResponse)
@@ -163,20 +163,16 @@ async def generate_visualization(request: VisualizationRequest):
             segments_data = []
         
         # Generate visualization
-        result_image = segmentation_service.generate_visualization(
+        result_path = segmentation_service.create_visualization(
             request.image_path,
             segments_data
         )
         
-        # Save visualization to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            import cv2
-            cv2.imwrite(temp_file.name, cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR))
-            return FileResponse(
-                temp_file.name,
-                media_type="image/jpeg",
-                filename="segmentation_visualization.jpg"
-            )
+        return FileResponse(
+            result_path,
+            media_type="image/png",
+            filename="segmentation_visualization.png"
+        )
             
     except Exception as e:
         logger.error(f"Error generating visualization: {str(e)}")
@@ -184,5 +180,21 @@ async def generate_visualization(request: VisualizationRequest):
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "Segmentation API"}
+    """Health check endpoint - includes external service status"""
+    try:
+        # Check external segmentation service
+        external_health = segmentation_service.check_health()
+        
+        return {
+            "status": "healthy", 
+            "service": "Turing Segmentation API (Client)",
+            "external_service": external_health,
+            "mode": "external_api"
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "service": "Turing Segmentation API (Client)", 
+            "external_service": {"status": "unhealthy", "error": str(e)},
+            "mode": "external_api"
+        }

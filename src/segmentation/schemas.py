@@ -1,7 +1,27 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
-from .enums import AreaType, PermissionCondition
+from enum import Enum
+
+class AreaType(str, Enum):
+    """Available area types for segmentation"""
+    BACKYARD = "backyard"
+    POOL = "pool"
+    GARAGE = "garage"
+    ROAD = "road"
+    DRIVEWAY = "driveway"
+    FRONT_YARD = "front_yard"
+    LAWN = "lawn"
+    PATIO = "patio"
+    DECK = "deck"
+    FENCE = "fence"
+    CUSTOM = "custom"
+
+class PermissionCondition(str, Enum):
+    """Conditions that can be applied to permissions"""
+    ADULT_SUPERVISION_REQUIRED = "adult_supervision_required"
+    DAYLIGHT_ONLY = "daylight_only"
+    WEEKENDS_ONLY = "weekends_only"
 
 class SegmentedArea(BaseModel):
     area_id: str

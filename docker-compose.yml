@@ -13,7 +13,8 @@ services:
       # Mount static files for serving extracted frames and visualizations
       - ./static:/app/static
     environment:
-      - PYTHONPATH=/app/Grounded-Segment-Anything:/app/Grounded-Segment-Anything/GroundingDINO
+      # The PYTHONPATH line below should be REMOVED
+      # - PYTHONPATH=/app/Grounded-Segment-Anything:/app/Grounded-Segment-Anything/GroundingDINO
       - BASE_URL=http://localhost:8000
     restart: unless-stopped
     healthcheck:
