@@ -52,6 +52,8 @@ class FaceInFrame(BaseModel):
     person_name: Optional[str] = None
     face_encoding: Optional[List[float]] = None
     face_crop_url: Optional[str] = None  # URL to individual face crop image
+    person_id: Optional[int] = None
+    detection_type: Optional[str] = None
 
 class FaceRecognitionFrame(BaseModel):
     frame_number: int

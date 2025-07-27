@@ -3,8 +3,7 @@ from datetime import datetime
 import logging
 import requests
 
-from .schemas import SegmentedArea, ResidentPermission
-from .enums import AreaType, PermissionCondition
+from .schemas import SegmentedArea, ResidentPermission, AreaType, PermissionCondition
 from ..storage.persistent_storage import PersistentStorage
 
 logger = logging.getLogger(__name__)

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alan AI - Access Permissions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#635bff',
+                        'brand-purple': '#7c3aed',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .permission-card:hover {
+            transform: translateY(-2px);
+            transition: transform 0.2s ease-in-out;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #635bff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress-step {
+            transition: all 0.3s ease;
+        }
+        .progress-step.active {
+            background-color: #635bff;
+            color: white;
+        }
+        .progress-step.completed {
+            background-color: #10b981;
+            color: white;
+        }
+        .person-card {
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .person-card.selected {
+            border-color: #635bff;
+            background-color: #f8faff;
+        }
+        .area-permission-item {
+            transition: all 0.2s ease;
+        }
+        .area-permission-item:hover {
+            background-color: #f9fafb;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #10b981;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <h1 class="text-2xl font-bold text-brand-blue">Alan AI</h1>
+                        <p class="text-sm text-gray-500">Access Permissions</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="connection-status" class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-red-400 rounded-full"></div>
+                        <span class="text-sm text-gray-600">Disconnected</span>
+                    </div>
+                    <button id="back-to-segmentation" class="bg-gray-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-600 transition-colors">
+                        ← Back to Areas
+                    </button>
+                    <button id="finish-setup" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Complete Setup →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Progress Bar -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-center space-x-8">
+                <div class="flex items-center">
+                    <div class="progress-step completed w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">1</div>
+                    <span class="ml-2 text-sm text-gray-600">Face Recognition</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="progress-step completed w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">2</div>
+                    <span class="ml-2 text-sm text-gray-600">Area Segmentation</span>
+                </div>
+                <div class="w-16 h-0.5 bg-gray-300"></div>
+                <div class="flex items-center">
+                    <div class="progress-step active w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">3</div>
+                    <span class="ml-2 text-sm text-gray-900 font-medium">Access Permissions</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Overview Section -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center p-3 bg-brand-purple rounded-md shadow-lg mb-4">
+                    <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Configure Access Permissions</h2>
+                <p class="text-gray-600">Define which recognized people can access which areas</p>
+            </div>
+
+            <!-- Summary Stats -->
+            <div id="summary-stats" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-brand-purple" id="total-people">0</div>
+                    <div class="text-sm text-gray-600">Labeled People</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-green-600" id="total-areas">0</div>
+                    <div class="text-sm text-gray-600">Verified Areas</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-blue-600" id="total-permissions">0</div>
+                    <div class="text-sm text-gray-600">Permissions Set</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-orange-600" id="completion-rate">0%</div>
+                    <div class="text-sm text-gray-600">Configuration Complete</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="text-center py-12">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Loading permissions data...</h3>
+            <p class="text-gray-600">Getting labeled people and verified areas</p>
+        </div>
+
+        <!-- Main Permissions Interface -->
+        <div id="permissions-interface" class="hidden">
+            <!-- People Selection -->
+            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Select Person to Configure</h3>
+                <div id="people-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <!-- People cards will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Permissions Configuration -->
+            <div id="permissions-config" class="bg-white rounded-lg border border-gray-200 p-6 mb-8 hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-medium text-gray-900">
+                        Access Permissions for <span id="selected-person-name" class="text-brand-purple font-semibold"></span>
+                    </h3>
+                    <div class="flex space-x-3">
+                        <button id="grant-all-access" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                            Grant All Access
+                        </button>
+                        <button id="revoke-all-access" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                            Revoke All Access
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Global Access Toggle -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-medium text-blue-900">Full Property Access</h4>
+                            <p class="text-sm text-blue-700">Grant access to all current and future areas</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="global-access-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Individual Area Permissions -->
+                <div id="area-permissions-list" class="space-y-4">
+                    <!-- Area permission items will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="bg-white rounded-lg border border-gray-200 p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button id="preset-adults" class="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div class="text-center">
+                            <div class="text-2xl mb-2">👨‍👩‍👧‍👦</div>
+                            <div class="font-medium text-gray-900">Adult Preset</div>
+                            <div class="text-sm text-gray-500">Full access to all areas</div>
+                        </div>
+                    </button>
+                    <button id="preset-children" class="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div class="text-center">
+                            <div class="text-2xl mb-2">🧒</div>
+                            <div class="font-medium text-gray-900">Child Preset</div>
+                            <div class="text-sm text-gray-500">Limited access, exclude hazardous areas</div>
+                        </div>
+                    </button>
+                    <button id="preset-guests" class="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div class="text-center">
+                            <div class="text-2xl mb-2">👤</div>
+                            <div class="font-medium text-gray-900">Guest Preset</div>
+                            <div class="text-sm text-gray-500">Common areas only</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-md p-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800">Error</h3>
+                    <p id="error-message" class="text-sm text-red-700 mt-1"></p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Permission Details Modal -->
+    <div id="permission-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Configure Area Access</h3>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Area Details Display -->
+                <div class="mb-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Area Type:</span>
+                                <p id="modal-area-type" class="text-sm text-gray-900 capitalize"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Area Size:</span>
+                                <p id="modal-area-size" class="text-sm text-gray-900"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Person:</span>
+                                <p id="modal-person-name" class="text-sm text-gray-900"></p>
+                            </div>
+                            <div>
+                                <span class="text-sm font-medium text-gray-700">Current Access:</span>
+                                <p id="modal-current-access" class="text-sm text-gray-900"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Permission Configuration -->
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Access Level</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="access-level" value="allowed" class="mr-2">
+                                <span class="text-green-700">✓ Allow Access</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="access-level" value="denied" class="mr-2">
+                                <span class="text-red-700">✗ Deny Access</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div id="conditions-section" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Access Conditions</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="condition" value="adult_supervision_required" class="mr-2">
+                                <span class="text-sm">Adult supervision required</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="condition" value="daylight_only" class="mr-2">
+                                <span class="text-sm">Daylight hours only</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="condition" value="weekends_only" class="mr-2">
+                                <span class="text-sm">Weekends only</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex space-x-3 pt-4">
+                        <button id="save-permission" class="flex-1 bg-brand-blue hover:bg-brand-purple text-white px-4 py-2 rounded-md font-medium transition-colors">
+                            Save Permission
+                        </button>
+                        <button id="cancel-permission" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -42,52 +42,51 @@ def save_face_encoding(user_id, name, encoding):
     # Save back to storage
     storage.save_face_encodings(user_id, encodings_data)
 
-def save_person_label(user_id, video_path, frame_number, bbox, person_name):
+def save_person_label(user_id, video_path, frame_number, bbox, person_name, detection_type="person"):
     """
-    Save a person label for a detected person in a specific frame.
-    This creates a record and extracts face encoding for future recognition.
+    Save a person or face label for a detected object in a specific frame.
+    This creates a record and can extract face encoding for future recognition.
     """
     # Load existing labels from persistent storage
     labels_data = storage.load_face_labels(user_id)
     if not labels_data:
         labels_data = {"labeled_faces": []}
     
-    # Try to extract face encoding from the video frame
+    # If it's a face detection, try to extract face encoding
     face_encoding = None
-    try:
-        # Load the video and extract the specific frame
-        cap = cv2.VideoCapture(video_path)
-        if cap.isOpened():
-            # Calculate frame position (frame_number is 1-indexed in our system)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
-            ret, frame = cap.read()
-            
-            if ret:
-                # Extract person region using bounding box
-                x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
-                person_region = frame[y1:y2, x1:x2]
+    if detection_type == "face":
+        try:
+            # Load the video and extract the specific frame
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
+                ret, frame = cap.read()
                 
-                # Try to find face in the person region
-                face_locations = face_recognition.face_locations(person_region)
-                if face_locations:
-                    face_encodings = face_recognition.face_encodings(person_region, face_locations)
+                if ret:
+                    # Extract person region using bounding box
+                    x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
+                    face_region = frame[y1:y2, x1:x2]
+                    
+                    # Get face encoding from the face region
+                    face_encodings = face_recognition.face_encodings(face_region)
                     if face_encodings:
-                        face_encoding = face_encodings[0]  # Use the first face found
+                        face_encoding = face_encodings[0]
                         
                         # Save the face encoding to persistent storage
                         save_face_encoding(user_id, person_name, face_encoding.tolist())
                         print(f"Successfully extracted and saved face encoding for {person_name}")
-            
-            cap.release()
-    except Exception as e:
-        print(f"Failed to extract face encoding: {str(e)}")
-    
+                
+                cap.release()
+        except Exception as e:
+            print(f"Failed to extract face encoding: {str(e)}")
+
     # Create label entry
     label_entry = {
         "video_path": video_path,
         "frame_number": frame_number,
         "bbox": bbox,
         "person_name": person_name,
+        "detection_type": detection_type,
         "timestamp": cv2.getTickCount() / cv2.getTickFrequency(),  # Current time
         "face_encoding_saved": face_encoding is not None
     }
@@ -99,6 +98,7 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
             existing_label["bbox"] == bbox):
             # Update existing label
             existing_label["person_name"] = person_name
+            existing_label["detection_type"] = detection_type
             existing_label["timestamp"] = label_entry["timestamp"]
             existing_label["face_encoding_saved"] = label_entry["face_encoding_saved"]
             break
@@ -109,8 +109,8 @@ def save_person_label(user_id, video_path, frame_number, bbox, person_name):
     # Save updated labels to persistent storage
     storage.save_face_labels(user_id, labels_data)
     
-    # Auto-update body embeddings if face encoding wasn't saved
-    if face_encoding is None:
+    # Auto-update body embeddings if it's a person detection
+    if detection_type == "person":
         try:
             # Extract person image for body embedding training
             cap = cv2.VideoCapture(video_path)
@@ -348,3 +348,83 @@ def analyze_video_with_recognition(video_path, user_id):
         unrecognized_faces=total_unrecognized,
         detections=frame_analyses
     )
+
+def detect_faces_in_frame(frame):
+    """
+    Detect faces in a frame using face_recognition library.
+    Returns a list of face locations.
+    """
+    try:
+        # Convert BGR to RGB for face_recognition library
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        face_locations = face_recognition.face_locations(rgb_frame)
+        return face_locations
+    except Exception as e:
+        print(f"Error detecting faces: {e}")
+        return []
+
+def recognize_faces_in_detections(frame, face_locations, user_id):
+    """
+    Recognize faces in detected face locations.
+    Returns a list of Detection objects with face information.
+    """
+    try:
+        detections = []
+        if not face_locations:
+            return detections
+        
+        # Load known faces
+        known_face_encodings, known_face_names = load_known_faces(user_id)
+        
+        # Convert BGR to RGB for face_recognition library
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Get face encodings for detected faces
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+        
+        for face_encoding, face_location in zip(face_encodings, face_locations):
+            top, right, bottom, left = face_location
+            bbox = BoundingBox(x1=left, y1=top, x2=right, y2=bottom)
+            
+            # Create base detection
+            detection = Detection(
+                bbox=bbox,
+                confidence=1.0,  # Face detection confidence is always high
+                class_name="face"
+            )
+            
+            # Try to recognize the face
+            if known_face_encodings:
+                matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.6)
+                face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+                
+                if matches and True in matches:
+                    # Find the best match
+                    best_match_index = np.argmin(face_distances)
+                    if matches[best_match_index]:
+                        person_name = known_face_names[best_match_index]
+                        recognition_confidence = 1.0 - face_distances[best_match_index]  # Convert distance to confidence
+                        
+                        detection.person_name = person_name
+                        detection.recognition_confidence = float(recognition_confidence)
+                        detection.detection_type = "face"
+                    else:
+                        detection.person_name = None
+                        detection.recognition_confidence = 0.0
+                        detection.detection_type = "face"
+                else:
+                    detection.person_name = None
+                    detection.recognition_confidence = 0.0
+                    detection.detection_type = "face"
+            else:
+                detection.person_name = None
+                detection.recognition_confidence = 0.0
+                detection.detection_type = "face"
+            
+            detections.append(detection)
+        
+        return detections
+        
+    except Exception as e:
+        print(f"Error recognizing faces: {e}")
+        return []

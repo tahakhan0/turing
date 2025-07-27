@@ -16,6 +16,13 @@ import io
 import cv2
 import numpy as np
 
+try:
+    from skimage.metrics import structural_similarity as ssim
+    SSIM_AVAILABLE = True
+except ImportError:
+    SSIM_AVAILABLE = False
+    print("Warning: scikit-image not available, using basic frame comparison")
+
 from .schemas import SegmentationResponse
 
 logger = logging.getLogger(__name__)
@@ -267,3 +274,249 @@ class ExternalSegmentationService:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return {"status": "unhealthy", "error": str(e)}
+    
+    def _frames_are_similar(self, frame1: np.ndarray, frame2: np.ndarray, threshold: float = 0.9) -> bool:
+        """Check if two frames are similar using structural similarity or basic comparison"""
+        # Resize frames for faster comparison
+        small_frame1 = cv2.resize(frame1, (100, 100))
+        small_frame2 = cv2.resize(frame2, (100, 100))
+        
+        # Convert to grayscale
+        gray1 = cv2.cvtColor(small_frame1, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(small_frame2, cv2.COLOR_BGR2GRAY)
+        
+        if SSIM_AVAILABLE:
+            # Use SSIM if available
+            similarity = ssim(gray1, gray2)
+        else:
+            # Fallback: use normalized cross-correlation
+            # Calculate mean squared difference
+            diff = np.mean((gray1.astype(float) - gray2.astype(float)) ** 2)
+            max_diff = 255.0 ** 2  # Maximum possible difference
+            similarity = 1.0 - (diff / max_diff)
+        
+        return similarity > threshold
+    
+    def _extract_unique_frames(self, video_path: str, max_frames: int = 10) -> List[np.ndarray]:
+        """Extract unique frames from video, avoiding duplicates"""
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video file: {video_path}")
+        
+        frames = []
+        frame_count = 0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Calculate frame interval to sample across the video
+        frame_interval = max(1, total_frames // (max_frames * 2))
+        previous_frame = None
+        
+        logger.info(f"Extracting frames from video with {total_frames} total frames, interval: {frame_interval}")
+        
+        while cap.isOpened() and len(frames) < max_frames:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            
+            # Only process every Nth frame
+            if frame_count % frame_interval != 0:
+                continue
+            
+            # Skip similar frames
+            if previous_frame is not None and self._frames_are_similar(previous_frame, frame, threshold=0.85):
+                continue
+            
+            frames.append(frame.copy())
+            previous_frame = frame.copy()
+            
+            logger.info(f"Extracted frame {len(frames)}/{max_frames}")
+        
+        cap.release()
+        logger.info(f"Extracted {len(frames)} unique frames from video")
+        return frames
+    
+    def process_video(self, video_path: str, user_id: str, 
+                     box_threshold: float = 0.3, text_threshold: float = 0.25,
+                     custom_prompts: Optional[Dict[str, str]] = None,
+                     max_frames: int = 10) -> Dict[str, Any]:
+        """
+        Process video for segmentation by extracting unique frames
+        
+        Args:
+            video_path: Path to video file
+            user_id: User ID for tracking
+            box_threshold: Detection confidence threshold
+            text_threshold: Text matching threshold
+            custom_prompts: Optional custom prompts, uses defaults if None
+            max_frames: Maximum number of frames to extract and process
+        
+        Returns:
+            Combined segmentation results from all frames
+        """
+        try:
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Video file not found: {video_path}")
+            
+            # Extract unique frames from video
+            frames = self._extract_unique_frames(video_path, max_frames)
+            
+            if not frames:
+                raise ValueError("No frames could be extracted from video")
+            
+            all_segments = []
+            processing_results = []
+            
+            # Process each frame for segmentation
+            for i, frame in enumerate(frames):
+                try:
+                    # Save frame as temporary image
+                    temp_image_path = os.path.join(tempfile.gettempdir(), f"frame_{user_id}_{i}.jpg")
+                    cv2.imwrite(temp_image_path, frame)
+                    
+                    # Process frame for segmentation
+                    frame_result = self.process_image(
+                        temp_image_path, 
+                        user_id, 
+                        box_threshold, 
+                        text_threshold, 
+                        custom_prompts
+                    )
+                    
+                    # Add frame info to segments
+                    if frame_result.get("status") == "success":
+                        for segment in frame_result.get("segments", []):
+                            segment["source_frame"] = i
+                            segment["source_video"] = video_path
+                            all_segments.append(segment)
+                    
+                    processing_results.append({
+                        "frame_index": i,
+                        "status": frame_result.get("status", "error"),
+                        "segments_found": len(frame_result.get("segments", [])),
+                        "processing_time": frame_result.get("processing_time", 0)
+                    })
+                    
+                    # Clean up temporary file
+                    if os.path.exists(temp_image_path):
+                        os.unlink(temp_image_path)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing frame {i}: {e}")
+                    processing_results.append({
+                        "frame_index": i,
+                        "status": "error",
+                        "error": str(e),
+                        "segments_found": 0
+                    })
+            
+            # Merge similar segments across frames
+            merged_segments = self._merge_similar_segments(all_segments)
+            
+            total_processing_time = sum(r.get("processing_time", 0) for r in processing_results)
+            
+            return {
+                "status": "success",
+                "video_path": video_path,
+                "frames_processed": len(frames),
+                "segments": merged_segments,
+                "total_segments_found": len(merged_segments),
+                "processing_time": total_processing_time,
+                "frame_results": processing_results,
+                "parameters_used": {
+                    "box_threshold": box_threshold,
+                    "text_threshold": text_threshold,
+                    "max_frames": max_frames
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Video processing failed: {e}")
+            raise e
+    
+    def _merge_similar_segments(self, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge similar segments found across multiple frames"""
+        if not segments:
+            return []
+        
+        merged = []
+        used_indices = set()
+        
+        for i, segment in enumerate(segments):
+            if i in used_indices:
+                continue
+            
+            # Find similar segments
+            similar_segments = [segment]
+            used_indices.add(i)
+            
+            for j, other_segment in enumerate(segments[i+1:], i+1):
+                if j in used_indices:
+                    continue
+                
+                # Check if segments are similar (same area type and overlapping location)
+                if (segment["area_type"] == other_segment["area_type"] and 
+                    self._segments_overlap(segment, other_segment)):
+                    similar_segments.append(other_segment)
+                    used_indices.add(j)
+            
+            # Merge the similar segments
+            merged_segment = self._create_merged_segment(similar_segments)
+            merged.append(merged_segment)
+        
+        logger.info(f"Merged {len(segments)} segments into {len(merged)} unique areas")
+        return merged
+    
+    def _segments_overlap(self, seg1: Dict[str, Any], seg2: Dict[str, Any], threshold: float = 0.3) -> bool:
+        """Check if two segments overlap significantly"""
+        try:
+            bbox1 = seg1.get("bbox", {})
+            bbox2 = seg2.get("bbox", {})
+            
+            # Calculate intersection
+            x1 = max(bbox1.get("x1", 0), bbox2.get("x1", 0))
+            y1 = max(bbox1.get("y1", 0), bbox2.get("y1", 0))
+            x2 = min(bbox1.get("x2", 0), bbox2.get("x2", 0))
+            y2 = min(bbox1.get("y2", 0), bbox2.get("y2", 0))
+            
+            if x2 <= x1 or y2 <= y1:
+                return False
+            
+            intersection_area = (x2 - x1) * (y2 - y1)
+            
+            # Calculate union
+            area1 = (bbox1.get("x2", 0) - bbox1.get("x1", 0)) * (bbox1.get("y2", 0) - bbox1.get("y1", 0))
+            area2 = (bbox2.get("x2", 0) - bbox2.get("x1", 0)) * (bbox2.get("y2", 0) - bbox2.get("y1", 0))
+            union_area = area1 + area2 - intersection_area
+            
+            # Calculate IoU (Intersection over Union)
+            iou = intersection_area / union_area if union_area > 0 else 0
+            return iou > threshold
+            
+        except Exception:
+            return False
+    
+    def _create_merged_segment(self, segments: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create a merged segment from multiple similar segments"""
+        if len(segments) == 1:
+            return segments[0]
+        
+        # Use the segment with highest confidence as base
+        base_segment = max(segments, key=lambda s: s.get("confidence", 0))
+        
+        # Average confidence scores
+        avg_confidence = sum(s.get("confidence", 0) for s in segments) / len(segments)
+        
+        # Collect source frames
+        source_frames = list(set(s.get("source_frame", 0) for s in segments))
+        
+        merged = base_segment.copy()
+        merged.update({
+            "confidence": avg_confidence,
+            "source_frames": source_frames,
+            "merge_count": len(segments),
+            "merged_from": [s.get("area_id") for s in segments]
+        })
+        
+        return merged

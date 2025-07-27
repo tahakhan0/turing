@@ -10,7 +10,7 @@ from .segment_manager import SegmentManager
 from .schemas import (
     SegmentationRequest, SegmentationResponse, VerificationRequest,
     PermissionRequest, AccessCheckRequest, AccessCheckResponse,
-    VisualizationRequest
+    VisualizationRequest, VideoSegmentationRequest
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,36 @@ async def segment_uploaded_image(user_id: str, file: UploadFile = File(...)):
     finally:
         # Clean up temporary file
         os.unlink(temp_path)
+
+@router.post("/segment/video", response_model=SegmentationResponse)
+async def segment_video(request: VideoSegmentationRequest):
+    """Segment areas in a video by extracting and processing unique frames"""
+    if not os.path.exists(request.video_path):
+        raise HTTPException(status_code=404, detail="Video file not found")
+    
+    try:
+        result = segmentation_service.process_video(
+            request.video_path,
+            request.user_id,
+            request.box_threshold,
+            request.text_threshold,
+            max_frames=request.max_frames
+        )
+        
+        # Store segments in manager if successful
+        if result.get("status") == "success":
+            for segment_data in result.get("segments", []):
+                segment_manager.add_segment(segment_data, request.user_id)
+        
+        return SegmentationResponse(
+            status=result["status"],
+            segments=result.get("segments", []),
+            image_path=result.get("video_path")
+        )
+        
+    except Exception as e:
+        logger.error(f"Video segmentation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Video segmentation failed: {str(e)}")
 
 @router.post("/segment/verify")
 async def verify_segment(request: VerificationRequest):

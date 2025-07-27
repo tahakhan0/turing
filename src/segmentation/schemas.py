@@ -54,6 +54,13 @@ class SegmentationRequest(BaseModel):
     box_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
     text_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
 
+class VideoSegmentationRequest(BaseModel):
+    video_path: str
+    user_id: str
+    box_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    text_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
+    max_frames: int = Field(default=10, ge=1, le=50)
+
 class SegmentationResponse(BaseModel):
     status: str
     segments: List[Dict[str, Any]] = Field(default_factory=list)

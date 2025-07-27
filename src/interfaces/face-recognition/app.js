@@ -16,7 +16,7 @@ class FaceRecognitionUI {
 
     initializeElements() {
         // Form elements
-        this.userIdInput = document.getElementById('user-id');
+        // Note: user ID is managed via localStorage, not an input field
         this.videoPathInput = document.getElementById('video-path');
         this.folderPathInput = document.getElementById('folder-path');
         this.serviceUrlInput = document.getElementById('service-url');
@@ -179,7 +179,7 @@ class FaceRecognitionUI {
     }
 
     async analyzeVideo() {
-        const userId = this.userIdInput.value.trim();
+        const userId = getCurrentUserId();
         const isFolderMode = this.folderOption.checked;
         const isRecognitionMode = this.recognitionOption.checked;
         
@@ -195,7 +195,7 @@ class FaceRecognitionUI {
             // Folder mode - use folder path
             pathValue = this.folderPathInput.value.trim();
             if (!userId || !pathValue) {
-                this.showError('Please enter both User ID and Folder Path');
+                this.showError('Please enter a valid Folder Path');
                 return;
             }
             payload.folder_path = pathValue;
@@ -205,7 +205,7 @@ class FaceRecognitionUI {
             const folderPath = this.folderPathInput.value.trim();
             
             if (!userId) {
-                this.showError('Please enter User ID');
+                this.showError('User session not found. Please refresh the page.');
                 return;
             }
             

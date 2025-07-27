@@ -184,6 +184,37 @@ class AreaSegmentationUI {
         this.hideError();
 
         try {
+            // Try video segmentation first (new approach)
+            const videoSegmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/video`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    video_path: this.currentVideoPath,
+                    user_id: this.currentUserId,
+                    box_threshold: parseFloat(this.boxThresholdSlider.value),
+                    text_threshold: parseFloat(this.textThresholdSlider.value),
+                    max_frames: 5  // Process up to 5 frames
+                })
+            });
+
+            if (videoSegmentResponse.ok) {
+                // Video segmentation succeeded
+                this.segmentationData = await videoSegmentResponse.json();
+                
+                if (this.segmentationData.status === 'error') {
+                    throw new Error(this.segmentationData.error);
+                }
+
+                this.areasData = this.segmentationData.segments || [];
+                this.displayResults(this.currentVideoPath); // Use video path as identifier
+                return;
+            }
+
+            // Fallback to frame extraction approach
+            console.log('Video segmentation not available, falling back to frame extraction');
+            
             // Extract frame from video first
             const frameNumber = parseInt(this.frameNumberInput.value) || 1;
             const extractResponse = await fetch(`${this.apiBaseUrl}/face-recognition/extract-frame`, {
@@ -604,8 +635,7 @@ class AreaSegmentationUI {
             total_areas: this.areasData.length
         });
         
-        // For now, just show an alert since permissions page doesn't exist yet
-        alert(`Ready to proceed to permissions!\n\nVerified Areas: ${this.verifiedAreas.size}/${this.areasData.length}\n\nThis would navigate to the permissions management interface where you can assign access rights to each labeled person for each verified area.`);
+        window.location.href = `../permissions/index.html?${params.toString()}`;
     }
 }
 

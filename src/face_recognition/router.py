@@ -11,8 +11,8 @@ from .schemas import (
     FaceRecognitionAnalysis
 )
 from .service import (
-    save_unrecognized_face,
-    save_person_label
+    save_person_label,
+    save_face_encoding
 )
 from . import yolo_service
 
@@ -73,7 +73,7 @@ def save_face(payload: SaveFacePayload):
     """
     Save the encoding of an unrecognized face with a name.
     """
-    save_unrecognized_face(payload.user_id, payload.name, payload.encoding)
+    save_face_encoding(payload.user_id, payload.name, payload.encoding)
     return {"message": f"Face for {payload.name} saved successfully."}
 
 @router.post("/save-person-label")
@@ -358,3 +358,50 @@ def get_person_embeddings(user_id: str):
         "total_persons": len(embeddings_info),
         "persons": embeddings_info
     }
+
+@router.post("/extract-frame")
+def extract_frame(payload: dict):
+    """
+    Extract a single frame from video for segmentation interface compatibility
+    """
+    video_path = payload.get("video_path")
+    frame_number = payload.get("frame_number", 1)
+    user_id = payload.get("user_id")
+    
+    if not all([video_path, user_id]):
+        raise HTTPException(status_code=400, detail="Missing required fields: video_path, user_id")
+    
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Video file not found")
+    
+    try:
+        # Extract frame using OpenCV
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(status_code=400, detail="Cannot open video file")
+        
+        # Jump to specific frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            raise HTTPException(status_code=400, detail="Cannot read frame from video")
+        
+        # Save frame to static directory
+        frames_dir = "/app/static/extracted_frames"
+        os.makedirs(frames_dir, exist_ok=True)
+        
+        frame_filename = f"{user_id}_frame_{frame_number}.jpg"
+        frame_path = os.path.join(frames_dir, frame_filename)
+        cv2.imwrite(frame_path, frame)
+        
+        return {
+            "image_path": frame_path,
+            "frame_number": frame_number,
+            "video_path": video_path,
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Frame extraction failed: {str(e)}")
