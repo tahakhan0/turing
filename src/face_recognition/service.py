@@ -310,7 +310,7 @@ def analyze_video_with_recognition(video_path, user_id):
                                 )
                                 
                                 face_in_frame = FaceInFrame(
-                                    name="Unknown",
+                                    name="",
                                     bbox=bbox,
                                     recognition_status="unrecognized",
                                     person_name="",
@@ -358,9 +358,11 @@ def detect_faces_in_frame(frame):
     Returns a list of face locations.
     """
     try:
+        print(f"detect_faces_in_frame: Input frame shape: {frame.shape}")
         # Convert BGR to RGB for face_recognition library
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_locations = face_recognition.face_locations(rgb_frame)
+        print(f"detect_faces_in_frame: Found {len(face_locations)} face locations: {face_locations}")
         return face_locations
     except Exception as e:
         print(f"Error detecting faces: {e}")
@@ -402,11 +404,14 @@ def recognize_faces_in_detections(frame, face_locations, user_id):
                 face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
                 
                 if matches and True in matches:
-                    # Find the best match
-                    best_match_index = np.argmin(face_distances)
-                    if matches[best_match_index]:
-                        person_name = known_face_names[best_match_index]
-                        recognition_confidence = 1.0 - face_distances[best_match_index]  # Convert distance to confidence
+                    # Find the best match among only the valid matches (those that passed tolerance)
+                    valid_indices = [i for i, match in enumerate(matches) if match]
+                    valid_distances = [face_distances[i] for i in valid_indices]
+                    
+                    if valid_distances:
+                        best_valid_index = valid_indices[np.argmin(valid_distances)]
+                        person_name = known_face_names[best_valid_index]
+                        recognition_confidence = 1.0 - face_distances[best_valid_index]  # Convert distance to confidence
                         
                         detection.person_name = person_name
                         detection.recognition_confidence = float(recognition_confidence)

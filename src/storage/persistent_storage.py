@@ -1,6 +1,5 @@
 import os
 import json
-import pickle
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -64,27 +63,44 @@ class PersistentStorage:
         user_face_dir = os.path.join(self.face_recognition_path, user_id)
         os.makedirs(user_face_dir, exist_ok=True)
         
-        encodings_file = os.path.join(user_face_dir, "encodings.pkl")
+        encodings_file = os.path.join(user_face_dir, "encodings.json")
         
         # Add timestamp
         encodings_data["last_updated"] = datetime.now().isoformat()
         
-        with open(encodings_file, 'wb') as f:
-            pickle.dump(encodings_data, f)
+        # Convert numpy arrays to lists for JSON serialization
+        if "encodings" in encodings_data:
+            converted_encodings = []
+            for encoding in encodings_data["encodings"]:
+                if hasattr(encoding, 'tolist'):
+                    converted_encodings.append(encoding.tolist())
+                elif hasattr(encoding, '__iter__'):
+                    converted_encodings.append(list(encoding))
+                else:
+                    converted_encodings.append(encoding)
+            encodings_data["encodings"] = converted_encodings
+        
+        with open(encodings_file, 'w') as f:
+            json.dump(encodings_data, f, indent=2)
         
         logger.info(f"Saved face encodings for user {user_id}")
         return encodings_file
     
     def load_face_encodings(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Load face encodings for a user"""
-        encodings_file = os.path.join(self.face_recognition_path, user_id, "encodings.pkl")
+        encodings_file = os.path.join(self.face_recognition_path, user_id, "encodings.json")
         
         if not os.path.exists(encodings_file):
             return None
         
         try:
-            with open(encodings_file, 'rb') as f:
-                return pickle.load(f)
+            with open(encodings_file, 'r') as f:
+                data = json.load(f)
+                # Convert lists back to numpy arrays for compatibility
+                if "encodings" in data:
+                    import numpy as np
+                    data["encodings"] = [np.array(enc) for enc in data["encodings"]]
+                return data
         except Exception as e:
             logger.error(f"Error loading face encodings for user {user_id}: {str(e)}")
             return None
@@ -101,6 +117,67 @@ class PersistentStorage:
         
         logger.info(f"Saved extracted frame {frame_filename} for user {user_id}")
         return frame_path
+    
+    def save_person_embeddings(self, user_id: str, embeddings_data: Dict[str, Any]) -> str:
+        """Save person embeddings for a user (body-based recognition)"""
+        user_face_dir = os.path.join(self.face_recognition_path, user_id)
+        os.makedirs(user_face_dir, exist_ok=True)
+        
+        embeddings_file = os.path.join(user_face_dir, "person_embeddings.json")
+        
+        # Add timestamp
+        embeddings_data["last_updated"] = datetime.now().isoformat()
+        
+        with open(embeddings_file, 'w') as f:
+            json.dump(embeddings_data, f, indent=2)
+        
+        logger.info(f"Saved person embeddings for user {user_id}")
+        return embeddings_file
+    
+    def load_person_embeddings(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Load person embeddings for a user (body-based recognition)"""
+        embeddings_file = os.path.join(self.face_recognition_path, user_id, "person_embeddings.json")
+        
+        if not os.path.exists(embeddings_file):
+            return None
+        
+        try:
+            with open(embeddings_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading person embeddings for user {user_id}: {str(e)}")
+            return None
+    
+    def update_person_embedding(self, user_id: str, person_name: str, features) -> bool:
+        """Update or add a specific person's embedding"""
+        try:
+            # Load existing embeddings
+            embeddings_data = self.load_person_embeddings(user_id)
+            if not embeddings_data:
+                embeddings_data = {"persons": {}}
+            
+            # Ensure persons key exists
+            if "persons" not in embeddings_data:
+                embeddings_data["persons"] = {}
+            
+            # Convert numpy array to list if needed
+            if hasattr(features, 'tolist'):
+                features_list = features.tolist()
+            elif hasattr(features, '__iter__'):
+                features_list = list(features)
+            else:
+                features_list = features
+            
+            # Add or update the person's features
+            embeddings_data["persons"][person_name] = features_list
+            
+            # Save back to storage
+            self.save_person_embeddings(user_id, embeddings_data)
+            logger.info(f"Updated person embedding for {person_name} (user: {user_id})")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating person embedding: {str(e)}")
+            return False
     
     # Segmentation Storage Methods
     def save_segmentation_data(self, user_id: str, segmentation_data: Dict[str, Any]) -> str:

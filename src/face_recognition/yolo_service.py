@@ -5,12 +5,15 @@ import numpy as np
 from pathlib import Path
 import face_recognition  # Import the face-recognition library
 from .schemas import VideoAnalysis, FrameAnalysis, Detection, BoundingBox, FaceRecognitionAnalysis, FaceRecognitionFrame, FaceInFrame
-import json
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
 from skimage.metrics import structural_similarity as ssim
 
 # Import service functions only when needed to avoid circular import
+from ..storage.persistent_storage import PersistentStorage
+
+# Initialize persistent storage
+storage = PersistentStorage()
 
 
 def frames_are_similar(frame1, frame2, threshold=0.9):
@@ -72,9 +75,6 @@ FRAME_INTERVAL = 5
 
 # Directory for storing visualization images
 VISUALIZATIONS_DIR = "/app/static/visualizations"
-
-# Directory for storing person embeddings (body-based features)
-PERSON_EMBEDDINGS_DIR = "/app/person_embeddings"
 
 # Temporal tracking for consistency across frames
 class PersonTracker:
@@ -354,24 +354,16 @@ def extract_person_features(person_image):
 
 def load_person_embeddings(user_id):
     """Load saved person embeddings for a user."""
-    embeddings_file = os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
-    if not os.path.exists(embeddings_file):
-        return {}
-
     try:
-        with open(embeddings_file, 'r') as f:
-            embeddings_data = json.load(f)
-            # Convert lists back to numpy arrays
-            for person_name in embeddings_data:
-                embeddings_data[person_name] = np.array(embeddings_data[person_name], dtype=np.float32)
-            return embeddings_data
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from {embeddings_file}: {e}")
-        # Backup corrupted file and start a new one
-        backup_file = f"{embeddings_file}.bak"
-        os.rename(embeddings_file, backup_file)
-        print(f"Backed up corrupted file to {backup_file}")
-        return {}
+        embeddings_data = storage.load_person_embeddings(user_id)
+        if not embeddings_data:
+            return {}
+        
+        # Extract the persons data and convert lists back to numpy arrays
+        persons_data = embeddings_data.get("persons", {})
+        for person_name in persons_data:
+            persons_data[person_name] = np.array(persons_data[person_name], dtype=np.float32)
+        return persons_data
     except Exception as e:
         print(f"Error loading person embeddings: {e}")
         return {}
@@ -380,25 +372,7 @@ def load_person_embeddings(user_id):
 def save_person_embedding(user_id, person_name, features):
     """Save person embedding to persistent storage."""
     try:
-        # Ensure directory exists
-        os.makedirs(PERSON_EMBEDDINGS_DIR, exist_ok=True)
-        
-        # Load existing embeddings
-        embeddings = load_person_embeddings(user_id)
-        
-        # Add or update the person's features
-        embeddings[person_name] = features
-        
-        # Convert all numpy types to Python native types for JSON serialization
-        converted_embeddings = convert_numpy_to_python(embeddings)
-        
-        # Save back to file
-        embeddings_file = os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
-        with open(embeddings_file, 'w') as f:
-            json.dump(converted_embeddings, f, indent=2)
-        
-        print(f"Saved person embedding for {person_name} (user: {user_id})")
-        return True
+        return storage.update_person_embedding(user_id, person_name, features)
     except Exception as e:
         print(f"Error saving person embedding: {e}")
         return False
@@ -490,12 +464,12 @@ def recognize_multiple_persons_by_body(frame, person_detections, user_id, confid
                     detection_features.append(features)
                     valid_detections.append(detection)
                 else:
-                    detection.person_name = "unknown"
+                    detection.person_name = None
                     detection.recognition_confidence = 0.0
                     detection.detection_type = "person"
             except Exception as e:
                 print(f"Error processing detection: {e}")
-                detection.person_name = "unknown"
+                detection.person_name = None
                 detection.recognition_confidence = 0.0
                 detection.detection_type = "person"
         
@@ -520,7 +494,7 @@ def recognize_multiple_persons_by_body(frame, person_detections, user_id, confid
                 detection.person_name = person_names[person_idx]
                 detection.recognition_confidence = confidence
             else:
-                detection.person_name = "unknown"
+                detection.person_name = None
                 detection.recognition_confidence = 0.0
             detection.detection_type = "person"
         
@@ -528,9 +502,9 @@ def recognize_multiple_persons_by_body(frame, person_detections, user_id, confid
         
     except Exception as e:
         print(f"Error in body-based recognition: {e}")
-        # Fallback: mark all as unknown
+        # Fallback: mark all as unrecognized
         for detection in person_detections:
-            detection.person_name = "unknown"
+            detection.person_name = None
             detection.recognition_confidence = 0.0
             detection.detection_type = "person"
         return person_detections
@@ -586,7 +560,7 @@ def recognize_person_by_body(frame, person_crop, user_id, confidence_threshold=0
     results = recognize_multiple_persons_by_body(person_crop, [dummy_detection], user_id, confidence_threshold)
     if results:
         return results[0].person_name, results[0].recognition_confidence
-    return "unknown", 0.0
+    return None, 0.0
 
 
 def calculate_recognition_confidence_score(similarity, lighting_quality, temporal_confidence=None):
@@ -719,7 +693,7 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
 
             # Determine detection type and color
             detection_type = getattr(detection, 'detection_type', 'person')
-            person_name = getattr(detection, 'person_name', 'unknown')
+            person_name = getattr(detection, 'person_name', None)
             recognition_confidence = getattr(detection, 'recognition_confidence', 0.0)
             
             # Skip face detections if view_type is "person" only
@@ -730,22 +704,22 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
                 continue
             
             # Make box thicker for recognized persons
-            box_thickness = 3 if person_name and person_name != "unknown" else 2
+            box_thickness = 3 if person_name and person_name.strip() else 2
             
             # Draw rectangle
             cv2.rectangle(vis_frame, (bbox.x1, bbox.y1), (bbox.x2, bbox.y2), color, box_thickness)
 
             # Prepare label text
             if detection_type == "face":
-                if person_name and person_name != "unknown" and person_name.strip():
+                if person_name and person_name.strip():
                     label = f"Label: {person_name} ({recognition_confidence:.2f})"
                 else:
-                    label = f"Label: Unknown ({recognition_confidence:.2f})"
+                    label = f"Label: Unlabeled ({recognition_confidence:.2f})"
             else:
-                if person_name and person_name != "unknown" and person_name.strip():
+                if person_name and person_name.strip():
                     label = f"Label: {person_name} ({recognition_confidence:.2f})"
                 else:
-                    label = f"Label: Unknown ({recognition_confidence:.2f})"
+                    label = f"Label: Unlabeled ({recognition_confidence:.2f})"
 
             # Calculate label background size
             label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
@@ -928,7 +902,7 @@ def get_person_embeddings_info(user_id):
             "user_id": user_id,
             "num_persons": len(embeddings),
             "person_names": list(embeddings.keys()) if embeddings else [],
-            "storage_path": os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
+            "storage_path": f"Using PersistentStorage at {storage.face_recognition_path}/{user_id}/person_embeddings.json"
         }
     except Exception as e:
         print(f"Error getting embeddings info: {e}")
@@ -981,9 +955,9 @@ def reconcile_detections(face_detections, person_detections, iou_threshold=0.8):
             merged_face.bbox = best_match_person.bbox  # Use person's larger bbox
             merged_face.detection_type = "merged"
             
-            # If face was unknown but person was known, use person's name
-            if (face.person_name is None or face.person_name == "unknown") and \
-               (best_match_person.person_name is not None and best_match_person.person_name != "unknown"):
+            # If face was unrecognized but person was known, use person's name
+            if (face.person_name is None or face.person_name == "") and \
+               (best_match_person.person_name is not None and best_match_person.person_name != ""):
                 merged_face.person_name = best_match_person.person_name
                 merged_face.name = best_match_person.person_name
                 merged_face.recognition_status = "recognized"
@@ -1028,8 +1002,9 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
         try:
             from .service import detect_faces_in_frame, recognize_faces_in_detections
             face_recognition_available = True
-        except ImportError:
-            print("Face recognition service not available, using body-based recognition only")
+            print("✅ Face recognition service imported successfully")
+        except ImportError as e:
+            print(f"❌ Face recognition service not available: {e}")
             face_recognition_available = False
 
         if yolo_model is None:
@@ -1064,8 +1039,10 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                 if face_recognition_available:
                     try:
                         face_detections = detect_faces_in_frame(frame)
+                        print(f"Frame {frame_count}: Found {len(face_detections)} face locations")
                         if face_detections:
                             recognized_faces = recognize_faces_in_detections(frame, face_detections, user_id)
+                            print(f"Frame {frame_count}: Created {len(recognized_faces)} face detections")
                             
                             # Convert to FaceInFrame format with face IDs
                             for detection in recognized_faces:
@@ -1076,13 +1053,14 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                                 face_id_counter += 1
                                 
                                 face_in_frame = FaceInFrame(
-                                    name=person_name if person_name and person_name != "unknown" else "Unknown",
+                                    name=person_name if person_name and person_name != "unknown" else None,
                                     bbox=detection.bbox,
                                     recognition_status="recognized" if person_name and person_name != "unknown" else "unrecognized",
                                     person_name=person_name,
                                     face_encoding=[],  # Not needed for display
                                     person_id=getattr(detection, 'person_id', 0),
-                                    detection_type=getattr(detection, 'detection_type', 'face')
+                                    detection_type=getattr(detection, 'detection_type', 'face'),
+                                    confidence=getattr(detection, 'recognition_confidence', 0.0)
                                 )
                                 all_faces.append(face_in_frame)
                     except Exception as e:
@@ -1145,19 +1123,21 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                         person_id = getattr(detection, 'person_id', 0)
                         
                         face_in_frame = FaceInFrame(
-                            name=person_name if person_name and person_name != "unknown" else "Unknown",
+                            name=person_name if person_name and person_name != "unknown" else None,
                             bbox=detection.bbox,
                             recognition_status="recognized" if person_name and person_name != "unknown" else "unrecognized",
                             person_name=person_name,
                             face_encoding=[],  # Not needed for display
                             person_id=person_id,
-                            detection_type=getattr(detection, 'detection_type', 'person')
+                            detection_type=getattr(detection, 'detection_type', 'person'),
+                            confidence=getattr(detection, 'recognition_confidence', 0.0)
                         )
                         all_faces.append(face_in_frame)
 
-                # Reconcile face and person detections
-                if face_recognition_available and person_detections:
-                    all_faces = reconcile_detections(all_faces, person_detections)
+                # Note: Keeping face and person detections separate for proper visualization
+                # Face detections show actual face bounding boxes
+                # Person detections show full body bounding boxes
+                # Both are important for different use cases
 
                 # Create visualization with multiple views
                 visualization_urls = {}

@@ -46,7 +46,7 @@ class UnrecognizedFace(BaseModel):
     bbox: BoundingBox
 
 class FaceInFrame(BaseModel):
-    name: str
+    name: Optional[str] = None
     bbox: BoundingBox
     recognition_status: str  # "recognized" or "unrecognized"
     person_name: Optional[str] = None
@@ -54,6 +54,7 @@ class FaceInFrame(BaseModel):
     face_crop_url: Optional[str] = None  # URL to individual face crop image
     person_id: Optional[int] = None
     detection_type: Optional[str] = None
+    confidence: Optional[float] = None  # Recognition confidence score
 
 class FaceRecognitionFrame(BaseModel):
     frame_number: int

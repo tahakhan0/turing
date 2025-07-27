@@ -12,6 +12,7 @@ services:
       - /Users/tahakhan/Desktop/ring_camera:/Users/tahakhan/Desktop/ring_camera
       # Mount static files for serving extracted frames and visualizations
       - ./static:/app/static
+      - ./test_storage.py:/app/test_storage.py
     environment:
       # The PYTHONPATH line below should be REMOVED
       # - PYTHONPATH=/app/Grounded-Segment-Anything:/app/Grounded-Segment-Anything/GroundingDINO

@@ -307,7 +307,7 @@ class FaceRecognitionUI {
                             frameNumber: frameData.frame_number,
                             timestamp: frameData.timestamp,
                             bbox: detection.bbox,
-                            confidence: 1.0, // Face recognition doesn't provide confidence scores
+                            confidence: detection.confidence || 0.0, // Use actual confidence from backend
                             visualizationUrl: frameData.visualization_url,
                             videoName: analysisData.video_path || 'Unknown',
                             videoPath: analysisData.video_path,
@@ -1155,7 +1155,7 @@ class FaceRecognitionUI {
 
             // Update local data for all labeled persons
             personLabels.forEach(personLabel => {
-                if (isConsolidatedMode) {
+                if (isConsolidatedMode && this.currentFrameGroup && this.currentFrameGroup.detections) {
                     // Update detections in frame group
                     this.currentFrameGroup.detections.forEach(detection => {
                         if (detection.personId === personLabel.person_id && 
@@ -1177,17 +1177,34 @@ class FaceRecognitionUI {
                         }
                     });
                 } else {
-                    // Old bulk interface - find and update face data matching this frame
-                    const matchingFaces = this.faceData.filter(face => 
-                        face.frameNumber === this.currentFaceData.frameNumber &&
-                        face.videoPath === (this.currentFaceData.videoPath || this.currentAnalysisData.video_path)
-                    );
+                    // Old bulk interface or fallback - find and update face data matching this frame
+                    let frameNumber = null;
+                    let videoPath = null;
+                    
+                    if (this.currentFaceData) {
+                        frameNumber = this.currentFaceData.frameNumber;
+                        videoPath = this.currentFaceData.videoPath || this.currentAnalysisData.video_path;
+                    } else if (this.currentFrameGroup) {
+                        frameNumber = this.currentFrameGroup.frameNumber;
+                        videoPath = this.currentFrameGroup.videoPath;
+                    }
+                    
+                    if (frameNumber !== null) {
+                        const matchingFaces = this.faceData.filter(face => 
+                            face.frameNumber === frameNumber &&
+                            face.videoPath === videoPath
+                        );
 
-                    matchingFaces.forEach(face => {
-                        face.labeled = true;
-                        face.personName = personLabel.person_name;
-                        face.status = 'labeled';
-                    });
+                        matchingFaces.forEach(face => {
+                            // Only update faces that match the specific person ID and detection type
+                            if (face.personId === personLabel.person_id && 
+                                face.detectionType === personLabel.detection_type) {
+                                face.labeled = true;
+                                face.personName = personLabel.person_name;
+                                face.status = 'labeled';
+                            }
+                        });
+                    }
                 }
             });
 
