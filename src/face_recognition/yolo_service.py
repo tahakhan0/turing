@@ -334,15 +334,23 @@ def extract_person_features(person_image):
 
 def load_person_embeddings(user_id):
     """Load saved person embeddings for a user."""
+    embeddings_file = os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
+    if not os.path.exists(embeddings_file):
+        return {}
+
     try:
-        embeddings_file = os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
-        if os.path.exists(embeddings_file):
-            with open(embeddings_file, 'r') as f:
-                embeddings_data = json.load(f)
-                # Convert lists back to numpy arrays
-                for person_name in embeddings_data:
-                    embeddings_data[person_name] = np.array(embeddings_data[person_name], dtype=np.float32)
-                return embeddings_data
+        with open(embeddings_file, 'r') as f:
+            embeddings_data = json.load(f)
+            # Convert lists back to numpy arrays
+            for person_name in embeddings_data:
+                embeddings_data[person_name] = np.array(embeddings_data[person_name], dtype=np.float32)
+            return embeddings_data
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from {embeddings_file}: {e}")
+        # Backup corrupted file and start a new one
+        backup_file = f"{embeddings_file}.bak"
+        os.rename(embeddings_file, backup_file)
+        print(f"Backed up corrupted file to {backup_file}")
         return {}
     except Exception as e:
         print(f"Error loading person embeddings: {e}")
@@ -359,12 +367,15 @@ def save_person_embedding(user_id, person_name, features):
         embeddings = load_person_embeddings(user_id)
         
         # Add or update the person's features
-        embeddings[person_name] = features.tolist()  # Convert numpy array to list for JSON serialization
+        embeddings[person_name] = features
+        
+        # Convert all numpy types to Python native types for JSON serialization
+        converted_embeddings = convert_numpy_to_python(embeddings)
         
         # Save back to file
         embeddings_file = os.path.join(PERSON_EMBEDDINGS_DIR, f"{user_id}_person_embeddings.json")
         with open(embeddings_file, 'w') as f:
-            json.dump(embeddings, f, indent=2)
+            json.dump(converted_embeddings, f, indent=2)
         
         print(f"Saved person embedding for {person_name} (user: {user_id})")
         return True
@@ -633,7 +644,7 @@ def should_trust_recognition(similarity, lighting_quality, person_crop_size, min
         return False, "Error in assessment"
 
 
-def create_visualization_image(frame, detections, frame_number, user_id, view_type="combined"):
+def create_visualization_image(frame, detections, frame_number, user_id, video_path, view_type="combined"):
     """
     Create a visualization image with bounding boxes drawn on detected persons.
     Returns the relative URL path to the saved image.
@@ -643,6 +654,7 @@ def create_visualization_image(frame, detections, frame_number, user_id, view_ty
         detections: List of Detection objects
         frame_number: Frame number for unique filename
         user_id: User ID for organization
+        video_path: Path to the video file, for unique naming
         view_type: "combined", "person", or "face" for different visualization styles
     """
     try:
@@ -741,12 +753,14 @@ def create_visualization_image(frame, detections, frame_number, user_id, view_ty
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         # Add metadata to the image
-        metadata_text = f"Frame: {frame_number} | User: {user_id} | View: {view_type}"
+        video_filename = os.path.basename(video_path)
+        metadata_text = f"Video: {video_filename} | Frame: {frame_number} | User: {user_id} | View: {view_type}"
         cv2.putText(vis_frame, metadata_text, (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         # Save the image with a unique filename
-        filename = f"{user_id}_frame_{frame_number}_{view_type}.jpg"
+        safe_video_filename = "".join([c for c in video_filename if c.isalpha() or c.isdigit() or c in ('.', '-')]).rstrip()
+        filename = f"{user_id}_{safe_video_filename}_frame_{frame_number}_{view_type}.jpg"
         filepath = os.path.join(VISUALIZATIONS_DIR, filename)
         cv2.imwrite(filepath, vis_frame)
 
@@ -830,7 +844,7 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
             # Generate visualization image if there are detections
             visualization_url = None
             if detections:
-                visualization_url = create_visualization_image(frame, detections, frame_count, user_id)
+                visualization_url = create_visualization_image(frame, detections, frame_count, user_id, video_path_str)
 
             # Only append analysis for processed frames
             frame_analysis = FrameAnalysis(
@@ -906,14 +920,14 @@ def get_person_embeddings_info(user_id):
 
 def convert_numpy_to_python(obj):
     """Recursively convert numpy types to Python native types for JSON serialization."""
-    import numpy as np
-    
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
         return int(obj)
     elif isinstance(obj, (np.float64, np.float32, np.float16)):
         return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     elif isinstance(obj, dict):
         return {key: convert_numpy_to_python(value) for key, value in obj.items()}
     elif isinstance(obj, (list, tuple)):
@@ -1126,9 +1140,9 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                     
                     # Create different visualization views
                     visualization_urls = {
-                        "combined": create_visualization_image(frame, vis_detections, frame_count, user_id, "combined"),
-                        "person": create_visualization_image(frame, vis_detections, frame_count, user_id, "person"),
-                        "face": create_visualization_image(frame, vis_detections, frame_count, user_id, "face")
+                        "combined": create_visualization_image(frame, vis_detections, frame_count, user_id, video_path, "combined"),
+                        "person": create_visualization_image(frame, vis_detections, frame_count, user_id, video_path, "person"),
+                        "face": create_visualization_image(frame, vis_detections, frame_count, user_id, video_path, "face")
                     }
 
                 # Create frame analysis

@@ -29,11 +29,14 @@ def save_face_encoding(user_id, name, encoding):
     if not encodings_data:
         encodings_data = {"names": [], "encodings": []}
     
-    # Check if this person already exists
-    if name in encodings_data["names"]:
-        # Update existing encoding
-        index = encodings_data["names"].index(name)
-        encodings_data["encodings"][index] = encoding
+    # Check if this person already exists (case-insensitive)
+    for i, existing_name in enumerate(encodings_data["names"]):
+        if existing_name.casefold() == name.casefold():
+            # Update existing encoding
+            encodings_data["encodings"][i] = encoding
+            # Optionally, update the name to the new casing if you want to keep it consistent
+            encodings_data["names"][i] = name
+            break
     else:
         # Add new encoding
         encodings_data["names"].append(name)

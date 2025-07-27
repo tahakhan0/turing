@@ -657,7 +657,7 @@ class FaceRecognitionUI {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Person Name for ${detection.detectionType === 'face' ? 'Face' : 'Person'}${colorName ? ` (${colorName} Box)` : ''}
+                        Label for ${detection.detectionType === 'face' ? 'Face' : 'Person'}${colorName ? ` (${colorName} Box)` : ''}
                     </label>
                     <input 
                         type="text" 

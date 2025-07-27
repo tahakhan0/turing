@@ -216,9 +216,9 @@ class SegmentManager:
             return []
     
     def is_labeled_person(self, person_name: str, user_id: str) -> bool:
-        """Check if person_name is a labeled person for the user"""
+        """Check if person_name is a labeled person for the user (case-insensitive)"""
         labeled_people = self.get_labeled_people(user_id)
-        return person_name in labeled_people
+        return person_name.casefold() in [p.casefold() for p in labeled_people]
     
     def add_person_permission(self, person_name: str, user_id: str, area_id: str, allowed: bool, 
                               conditions: List[str] = None) -> Dict[str, Any]:
@@ -252,7 +252,7 @@ class SegmentManager:
         
         # Remove existing permission for this person-area combination
         self.permissions = [p for p in self.permissions 
-                          if not (p.person_name == person_name and p.user_id == user_id and p.area_id == area_id)]
+                          if not (p.person_name.casefold() == person_name.casefold() and p.user_id == user_id and p.area_id == area_id)]
         
         self.permissions.append(permission)
         self._save_user_data(user_id)
@@ -277,11 +277,11 @@ class SegmentManager:
         
         # First check for "all" areas permission
         all_permission = next((p for p in self.permissions 
-                              if p.person_name == person_name and p.user_id == user_id and p.area_id == "all"), None)
+                              if p.person_name.casefold() == person_name.casefold() and p.user_id == user_id and p.area_id == "all"), None)
         
         # Then check for specific area permission
         specific_permission = next((p for p in self.permissions 
-                                  if p.person_name == person_name and p.user_id == user_id and p.area_id == area_id), None)
+                                  if p.person_name.casefold() == person_name.casefold() and p.user_id == user_id and p.area_id == area_id), None)
         
         # Use specific permission if available, otherwise use "all" permission
         permission = specific_permission or all_permission
@@ -311,7 +311,7 @@ class SegmentManager:
         """Get all permissions for a labeled person"""
         person_permissions = []
         for permission in self.permissions:
-            if permission.person_name == person_name and permission.user_id == user_id:
+            if permission.person_name.casefold() == person_name.casefold() and permission.user_id == user_id:
                 # Get area info
                 area_info = None
                 if permission.area_id in self.segments:
@@ -356,7 +356,7 @@ class SegmentManager:
         
         initial_count = len(self.permissions)
         self.permissions = [p for p in self.permissions 
-                          if not (p.person_name == person_name and p.user_id == user_id and p.area_id == area_id)]
+                          if not (p.person_name.casefold() == person_name.casefold() and p.user_id == user_id and p.area_id == area_id)]
         
         if len(self.permissions) < initial_count:
             self._save_user_data(user_id)
