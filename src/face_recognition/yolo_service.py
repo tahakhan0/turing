@@ -8,7 +8,27 @@ from .schemas import VideoAnalysis, FrameAnalysis, Detection, BoundingBox, FaceR
 import json
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
+from skimage.metrics import structural_similarity as ssim
+
 # Import service functions only when needed to avoid circular import
+
+
+def frames_are_similar(frame1, frame2, threshold=0.9):
+    """
+    Check if two frames are similar using structural similarity.
+    """
+    # Resize frames for faster comparison
+    small_frame1 = cv2.resize(frame1, (100, 100))
+    small_frame2 = cv2.resize(frame2, (100, 100))
+    
+    # Convert to grayscale
+    gray1 = cv2.cvtColor(small_frame1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(small_frame2, cv2.COLOR_BGR2GRAY)
+    
+    # Calculate structural similarity
+    similarity = ssim(gray1, gray2)
+    
+    return similarity > threshold
 
 # Get the base URL for serving images (can be overridden with environment variable)
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
@@ -426,7 +446,7 @@ def assess_lighting_quality(image):
         return 0.5, {}
 
 
-def recognize_multiple_persons_by_body(frame, person_detections, user_id, confidence_threshold=0.6):
+def recognize_multiple_persons_by_body(frame, person_detections, user_id, confidence_threshold=0.85):
     """
     Recognize multiple persons in detections using body-based features.
     Returns updated detections with person names and confidence scores.
@@ -691,10 +711,12 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
         person_id_counter = 1
 
         # Draw bounding boxes for each detection
-        for detection in detections:
+        for i, detection in enumerate(detections):
             bbox = detection.bbox
-            confidence = detection.confidence
-            
+
+            # Assign a unique color to each detection
+            color = person_colors[i % len(person_colors)]
+
             # Determine detection type and color
             detection_type = getattr(detection, 'detection_type', 'person')
             person_name = getattr(detection, 'person_name', 'unknown')
@@ -707,21 +729,8 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
             if view_type == "face" and detection_type == "person":
                 continue
             
-            # Choose color based on person_id or recognition status
-            person_id = getattr(detection, 'person_id', None)
-            if detection_type == 'face':
-                color = default_colors['face']
-                box_thickness = 2
-            elif person_id is not None and detection_type == "person":
-                # Use person_id specific color
-                color = person_colors[person_id % len(person_colors)]
-                box_thickness = 2
-            elif person_name == "unknown" or person_name is None:
-                color = default_colors['unknown']
-                box_thickness = 2
-            else:
-                color = default_colors['known']
-                box_thickness = 3  # Thicker for known persons
+            # Make box thicker for recognized persons
+            box_thickness = 3 if person_name and person_name != "unknown" else 2
             
             # Draw rectangle
             cv2.rectangle(vis_frame, (bbox.x1, bbox.y1), (bbox.x2, bbox.y2), color, box_thickness)
@@ -731,12 +740,12 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
                 if person_name and person_name != "unknown" and person_name.strip():
                     label = f"Label: {person_name} ({recognition_confidence:.2f})"
                 else:
-                    label = f"Label: Unknown ({confidence:.2f})"
+                    label = f"Label: Unknown ({recognition_confidence:.2f})"
             else:
                 if person_name and person_name != "unknown" and person_name.strip():
                     label = f"Label: {person_name} ({recognition_confidence:.2f})"
                 else:
-                    label = f"Label: Unknown ({confidence:.2f})"
+                    label = f"Label: Unknown ({recognition_confidence:.2f})"
 
             # Calculate label background size
             label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
@@ -803,11 +812,19 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
 
     frame_analyses = []
     frame_count = 0
+    previous_frame = None
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
+
+        # Skip similar frames to reduce duplicates
+        if previous_frame is not None and frames_are_similar(previous_frame, frame):
+            frame_count += 1
+            continue
+        
+        previous_frame = frame.copy()
 
         # --- FRAME SKIPPING LOGIC ---
         # Only process the frame if its count is a multiple of FRAME_INTERVAL
@@ -1005,6 +1022,7 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
 
         frame_analyses = []
         frame_count = 0
+        previous_frame = None
         
         # Import face recognition service functions
         try:
@@ -1014,10 +1032,28 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
             print("Face recognition service not available, using body-based recognition only")
             face_recognition_available = False
 
+        if yolo_model is None:
+            print("YOLO model not loaded, skipping analysis.")
+            return FaceRecognitionAnalysis(
+                video_path=video_path,
+                total_frames=0,
+                processed_frames=0,
+                recognized_faces=0,
+                unrecognized_faces=0,
+                detections=[]
+            )
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
+
+            # Skip similar frames to reduce duplicates
+            if previous_frame is not None and frames_are_similar(previous_frame, frame, threshold=0.95):
+                frame_count += 1
+                continue
+            
+            previous_frame = frame.copy()
 
             # Process every FRAME_INTERVAL frames
             if frame_count % FRAME_INTERVAL == 0:
@@ -1040,15 +1076,15 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                                 face_id_counter += 1
                                 
                                 face_in_frame = FaceInFrame(
-                            name=person_name if person_name and person_name != "unknown" else "Unknown",
-                            bbox=detection.bbox,
-                            recognition_status="recognized" if person_name and person_name != "unknown" else "unrecognized",
-                            person_name=person_name,
-                            face_encoding=[],  # Not needed for display
-                            person_id=getattr(detection, 'person_id', 0),
-                            detection_type=getattr(detection, 'detection_type', 'face')
-                        )
-                        all_faces.append(face_in_frame)
+                                    name=person_name if person_name and person_name != "unknown" else "Unknown",
+                                    bbox=detection.bbox,
+                                    recognition_status="recognized" if person_name and person_name != "unknown" else "unrecognized",
+                                    person_name=person_name,
+                                    face_encoding=[],  # Not needed for display
+                                    person_id=getattr(detection, 'person_id', 0),
+                                    detection_type=getattr(detection, 'detection_type', 'face')
+                                )
+                                all_faces.append(face_in_frame)
                     except Exception as e:
                         print(f"Face recognition failed, using body-based fallback: {e}")
                 
@@ -1070,12 +1106,14 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                             detection = Detection(
                                 bbox=bbox,
                                 confidence=float(confidences[i]),
-                                class_name=class_name
+                                class_name=class_name,
+                                person_name=None,  # Set person_name to None for unrecognized persons
+                                recognition_confidence=0.0,
+                                detection_type="person",
+                                person_id=person_id_counter  # Use the unique counter
                             )
-                            # Assign unique person ID for color coding
-                            detection.person_id = person_id_counter
-                            person_id_counter += 1
                             person_detections.append(detection)
+                            person_id_counter += 1  # Increment for the next person
 
                 # Apply body-based recognition
                 if person_detections:
@@ -1124,6 +1162,7 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                 # Create visualization with multiple views
                 visualization_urls = {}
                 if all_faces:
+                    print(f"Frame {frame_count}: Found {len(all_faces)} faces/persons.")
                     # Convert FaceInFrame back to Detection format for visualization
                     vis_detections = []
                     for face in all_faces:
@@ -1144,6 +1183,8 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                         "person": create_visualization_image(frame, vis_detections, frame_count, user_id, video_path, "person"),
                         "face": create_visualization_image(frame, vis_detections, frame_count, user_id, video_path, "face")
                     }
+                else:
+                    print(f"Frame {frame_count}: No faces or persons found.")
 
                 # Create frame analysis
                 frame_analysis = FaceRecognitionFrame(

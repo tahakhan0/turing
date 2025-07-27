@@ -629,8 +629,7 @@ class FaceRecognitionUI {
         this.bulkPersonInputs.appendChild(headerDiv);
         
         frameGroup.detections.forEach((detection, index) => {
-            const colorName = detection.detectionType === 'person' && detection.personId !== undefined ? 
-                colorNames[detection.personId] || `Color ${detection.personId}` : null;
+            const colorName = colorNames[detection.personId % colorNames.length] || `Color ${detection.personId}`;
             
             const personDiv = document.createElement('div');
             personDiv.className = 'border border-gray-200 rounded-md p-4 bg-gray-50 mb-3';
@@ -641,9 +640,9 @@ class FaceRecognitionUI {
                 ${detection.detectionType === 'face' ? 'Face' : 'Person'}
             </span>`;
             
-            const colorInfo = colorName ? `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
+            const colorInfo = `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
                 ${colorName} Box
-            </span>` : '';
+            </span>`;
             
             personDiv.innerHTML = `
                 <div class="flex items-center justify-between mb-3">
