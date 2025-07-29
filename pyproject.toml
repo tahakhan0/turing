@@ -24,6 +24,7 @@ dependencies = [
     "pydantic",
     "jinja2",
     "aiofiles",
+    "replicate>=1.0.7",
 ]
 
 [build-system]
