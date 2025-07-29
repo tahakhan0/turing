@@ -433,15 +433,6 @@ def recognize_multiple_persons_by_body(frame, person_detections, user_id, confid
         # Load saved embeddings
         saved_embeddings = load_person_embeddings(user_id)
         
-        # Also load saved labels from service.py for cross-checking
-        try:
-            from .service import storage
-            labels_data = storage.load_face_labels(user_id)
-            saved_labels = labels_data.get("labeled_faces", []) if labels_data else []
-        except Exception as e:
-            print(f"Could not load saved labels: {e}")
-            saved_labels = []
-        
         if not saved_embeddings:
             # No saved embeddings, but still check saved labels
             for detection in person_detections:
