@@ -2,6 +2,9 @@ from ultralytics import YOLO
 import cv2
 import os
 import numpy as np
+import os
+import hashlib
+from datetime import datetime
 from pathlib import Path
 import face_recognition  # Import the face-recognition library
 from .schemas import VideoAnalysis, FrameAnalysis, Detection, BoundingBox, FaceRecognitionAnalysis, FaceRecognitionFrame, FaceInFrame
@@ -794,6 +797,23 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
         # --- FRAME SKIPPING LOGIC ---
         # Only process the frame if its count is a multiple of FRAME_INTERVAL
         if frame_count % FRAME_INTERVAL == 0:
+            # Save unique frame to storage for segmentation
+            try:
+                # Generate unique filename with frame number and hash
+                frame_hash = hashlib.md5(frame.tobytes()).hexdigest()[:8]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                frame_filename = f"frame_{frame_count}_{timestamp}_{frame_hash}.jpg"
+                
+                # Encode frame as JPEG bytes
+                success, encoded_frame = cv2.imencode('.jpg', frame)
+                if success:
+                    frame_bytes = encoded_frame.tobytes()
+                    saved_path = storage.save_extracted_frame(user_id, frame_bytes, frame_filename)
+                    print(f"Saved frame {frame_count} for segmentation: {saved_path}")
+                else:
+                    print(f"Failed to encode frame {frame_count}")
+            except Exception as e:
+                print(f"Error saving frame {frame_count}: {e}")
             # Perform inference on the current frame
             results = yolo_model(frame)
 
@@ -1023,6 +1043,29 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
 
             # Process every FRAME_INTERVAL frames
             if frame_count % FRAME_INTERVAL == 0:
+                # Save unique frame to storage for segmentation
+                try:
+                    import cv2
+                    import os
+                    import hashlib
+                    from datetime import datetime
+                    
+                    # Generate unique filename with frame number and hash
+                    frame_hash = hashlib.md5(frame.tobytes()).hexdigest()[:8]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    frame_filename = f"frame_{frame_count}_{timestamp}_{frame_hash}.jpg"
+                    
+                    # Encode frame as JPEG bytes
+                    success, encoded_frame = cv2.imencode('.jpg', frame)
+                    if success:
+                        frame_bytes = encoded_frame.tobytes()
+                        saved_path = storage.save_extracted_frame(user_id, frame_bytes, frame_filename)
+                        print(f"Saved frame {frame_count} for segmentation: {saved_path}")
+                    else:
+                        print(f"Failed to encode frame {frame_count}")
+                except Exception as e:
+                    print(f"Error saving frame {frame_count}: {e}")
+                    
                 all_faces = []
                 face_id_counter = 0
                 

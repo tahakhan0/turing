@@ -36,6 +36,9 @@ RUN uv pip install --no-cache --system -r requirements.txt
 # Copy the application code from the src directory into the container
 COPY ./src /app/src
 
+# Copy .env file if it exists
+COPY .env* ./
+
 # Expose port 8000 for the FastAPI application
 EXPOSE 8000
 

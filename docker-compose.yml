@@ -19,6 +19,8 @@ services:
       - BASE_URL=http://localhost:8000
       - TURING_SEGMENTATION_URL=https://your-runpod-instance.com:8000
       - TURING_SEGMENTATION_API_KEY=your-secret-api-key-here
+    env_file:
+      - .env
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/face-recognition/health"]
