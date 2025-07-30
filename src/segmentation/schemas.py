@@ -15,6 +15,18 @@ class AreaType(str, Enum):
     PATIO = "patio"
     DECK = "deck"
     FENCE = "fence"
+    GRASS = "grass"
+    WINDOWS = "windows"
+    CHAIRS = "chairs"
+    MOWER = "mower"
+    LAWN_MOWER = "lawn_mower"
+    PIPE = "pipe"
+    WATER = "water"
+    SHED = "shed"
+    CART = "cart"
+    PALLET = "pallet"
+    GARBAGE = "garbage"
+    CAR = "car"
     CUSTOM = "custom"
 
 class PermissionCondition(str, Enum):
@@ -25,8 +37,7 @@ class PermissionCondition(str, Enum):
 
 class SegmentedArea(BaseModel):
     area_id: str
-    area_type: AreaType
-    polygon: List[Tuple[int, int]]
+    area_type: str  # Changed from enum to string to support dynamic labels
     confidence: float = Field(ge=0.0, le=1.0)
     dimensions: Dict[str, float]  # width, height, area in meters
     user_id: str
@@ -66,6 +77,7 @@ class SegmentationResponse(BaseModel):
     segments: List[Dict[str, Any]] = Field(default_factory=list)
     image_path: Optional[str] = None
     error: Optional[str] = None
+    visualization_url: Optional[str] = None
 
 class VerificationRequest(BaseModel):
     area_id: str

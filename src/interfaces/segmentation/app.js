@@ -75,6 +75,9 @@ class AreaSegmentationUI {
         this.verifyAreaBtn = document.getElementById('verify-area');
         this.rejectAreaBtn = document.getElementById('reject-area');
         this.closeModalBtn = document.getElementById('close-modal');
+        
+        // Auto-processing notice
+        this.autoProcessingNotice = document.getElementById('auto-processing-notice');
     }
 
     attachEventListeners() {
@@ -140,6 +143,14 @@ class AreaSegmentationUI {
             this.apiBaseUrl = serviceUrl;
             this.serviceUrlInput.value = serviceUrl;
         }
+
+        // Auto-start segmentation if coming from face recognition
+        if (this.currentUserId && facesCount && parseInt(facesCount) > 0) {
+            // Delay to allow UI to initialize
+            setTimeout(() => {
+                this.autoStartSegmentation();
+            }, 1000);
+        }
     }
 
     async checkServiceConnection() {
@@ -174,9 +185,32 @@ class AreaSegmentationUI {
         this.frameNumberInput.value = randomFrame;
     }
 
+    async autoStartSegmentation() {
+        // Auto-start segmentation with a user-friendly message
+        console.log('Auto-starting segmentation after face recognition completion...');
+        
+        // Show auto-processing notice
+        if (this.autoProcessingNotice) {
+            this.autoProcessingNotice.classList.remove('hidden');
+        }
+        
+        // Update the UI to show it's automatically starting
+        this.segmentText.textContent = 'Auto-starting segmentation...';
+        this.startSegmentationBtn.classList.add('bg-green-600');
+        this.startSegmentationBtn.classList.remove('bg-brand-purple');
+        
+        // Start the segmentation process
+        await this.startSegmentation();
+        
+        // Hide the notice after processing
+        if (this.autoProcessingNotice) {
+            this.autoProcessingNotice.classList.add('hidden');
+        }
+    }
+
     async startSegmentation() {
-        if (!this.currentVideoPath || !this.currentUserId) {
-            this.showError('Missing video path or user ID. Please go back to face recognition first.');
+        if (!this.currentUserId) {
+            this.showError('Missing user ID. Please go back to face recognition first.');
             return;
         }
 
@@ -184,84 +218,103 @@ class AreaSegmentationUI {
         this.hideError();
 
         try {
-            // Try video segmentation first (new approach)
-            const videoSegmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/video`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    video_path: this.currentVideoPath,
-                    user_id: this.currentUserId,
-                    box_threshold: parseFloat(this.boxThresholdSlider.value),
-                    text_threshold: parseFloat(this.textThresholdSlider.value),
-                    max_frames: 5  // Process up to 5 frames
-                })
+            // First, check if there are already segmented results from extracted frames
+            const existingDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            
+            if (existingDataResponse.ok) {
+                const existingData = await existingDataResponse.json();
+                if (existingData.segmentation_data && existingData.segmentation_data.segments && existingData.segmentation_data.segments.length > 0) {
+                    // Use existing segmentation data
+                    console.log('Found existing segmentation data, displaying results...');
+                    this.segmentationData = existingData.segmentation_data;
+                    this.areasData = this.segmentationData.segments || [];
+                    
+                    // Show loading message for existing data
+                    this.segmentText.textContent = 'Loading existing segmentation results...';
+                    this.startSegmentationBtn.classList.add('bg-blue-600');
+                    this.startSegmentationBtn.classList.remove('bg-brand-purple');
+                    
+                    this.displayResults(null, true); // Show existing results
+                    return;
+                }
+            }
+
+            // If no existing data, try to segment extracted frames
+            const segmentFramesResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}`, {
+                method: 'POST'
             });
 
-            if (videoSegmentResponse.ok) {
-                // Video segmentation succeeded
-                this.segmentationData = await videoSegmentResponse.json();
+            if (segmentFramesResponse.ok) {
+                const frameSegmentData = await segmentFramesResponse.json();
+                
+                if (frameSegmentData.status === 'success' && frameSegmentData.total_segments_found > 0) {
+                    // Load the newly created segmentation data
+                    const newDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+                    if (newDataResponse.ok) {
+                        const newData = await newDataResponse.json();
+                        this.segmentationData = newData.segmentation_data;
+                        this.areasData = this.segmentationData.segments || [];
+                        this.displayResults(null, true);
+                        return;
+                    }
+                }
+            }
+
+            // Fallback to video/image segmentation if available
+            if (this.currentVideoPath) {
+                console.log('No extracted frames available, trying direct video segmentation');
+                
+                // Extract frame from video first
+                const frameNumber = parseInt(this.frameNumberInput.value) || 1;
+                const extractResponse = await fetch(`${this.apiBaseUrl}/face-recognition/extract-frame`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        video_path: this.currentVideoPath,
+                        frame_number: frameNumber,
+                        user_id: this.currentUserId
+                    })
+                });
+
+                if (!extractResponse.ok) {
+                    throw new Error(`Failed to extract frame: ${extractResponse.statusText}`);
+                }
+
+                const frameData = await extractResponse.json();
+                const imagePath = frameData.image_path;
+
+                // Now segment the extracted frame using Replicate
+                const segmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/replicate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        image_path: imagePath,
+                        user_id: this.currentUserId,
+                        box_threshold: parseFloat(this.boxThresholdSlider.value),
+                        text_threshold: parseFloat(this.textThresholdSlider.value)
+                    })
+                });
+
+                if (!segmentResponse.ok) {
+                    throw new Error(`Segmentation failed: ${segmentResponse.statusText}`);
+                }
+
+                this.segmentationData = await segmentResponse.json();
+                console.log('Segmentation response:', this.segmentationData);
                 
                 if (this.segmentationData.status === 'error') {
                     throw new Error(this.segmentationData.error);
                 }
 
                 this.areasData = this.segmentationData.segments || [];
-                this.displayResults(this.currentVideoPath); // Use video path as identifier
-                return;
+                this.displayResults(null, false); // Pass null so it uses segmentationData.image_path
+            } else {
+                throw new Error('No video path provided and no extracted frames found. Please complete face recognition first.');
             }
-
-            // Fallback to frame extraction approach
-            console.log('Video segmentation not available, falling back to frame extraction');
-            
-            // Extract frame from video first
-            const frameNumber = parseInt(this.frameNumberInput.value) || 1;
-            const extractResponse = await fetch(`${this.apiBaseUrl}/face-recognition/extract-frame`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    video_path: this.currentVideoPath,
-                    frame_number: frameNumber,
-                    user_id: this.currentUserId
-                })
-            });
-
-            if (!extractResponse.ok) {
-                throw new Error(`Failed to extract frame: ${extractResponse.statusText}`);
-            }
-
-            const frameData = await extractResponse.json();
-            const imagePath = frameData.image_path;
-
-            // Now segment the extracted frame
-            const segmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    image_path: imagePath,
-                    user_id: this.currentUserId,
-                    box_threshold: parseFloat(this.boxThresholdSlider.value),
-                    text_threshold: parseFloat(this.textThresholdSlider.value)
-                })
-            });
-
-            if (!segmentResponse.ok) {
-                throw new Error(`Segmentation failed: ${segmentResponse.statusText}`);
-            }
-
-            this.segmentationData = await segmentResponse.json();
-            
-            if (this.segmentationData.status === 'error') {
-                throw new Error(this.segmentationData.error);
-            }
-
-            this.areasData = this.segmentationData.segments || [];
-            this.displayResults(imagePath);
             
         } catch (error) {
             console.error('Segmentation error:', error);
@@ -271,18 +324,48 @@ class AreaSegmentationUI {
         }
     }
 
-    displayResults(imagePath) {
+    displayResults(imagePath, isFromExtractedFrames = false) {
         this.setupSection.classList.add('hidden');
         this.resultsSection.classList.remove('hidden');
 
         // Update summary
         this.updateSummary();
 
-        // Display frame
-        this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${imagePath.split('/').pop()}`;
-        this.frameImage.onload = () => {
-            this.drawSegmentationOverlay();
-        };
+        // Display frame - handle different image sources
+        if (isFromExtractedFrames && this.segmentationData.frame_details && this.segmentationData.frame_details.length > 0) {
+            // Use the first frame that has a visualization
+            const frameWithViz = this.segmentationData.frame_details.find(f => f.visualization_url);
+            if (frameWithViz && frameWithViz.visualization_url) {
+                this.frameImage.src = frameWithViz.visualization_url;
+            } else {
+                // Fallback to first available frame
+                const firstFrame = this.areasData.find(area => area.source_frame_path);
+                if (firstFrame && firstFrame.source_frame_path) {
+                    this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${firstFrame.source_frame_path.split('/').pop()}`;
+                }
+            }
+        } else if (imagePath) {
+            // Single image segmentation - check if it's already a full URL path
+            if (imagePath.startsWith('/static/')) {
+                this.frameImage.src = imagePath;
+            } else {
+                this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${imagePath.split('/').pop()}`;
+            }
+        } else if (this.segmentationData.image_path) {
+            // Use image_path from segmentation response (could be visualization)
+            console.log('Using image_path from response:', this.segmentationData.image_path);
+            this.frameImage.src = this.segmentationData.image_path;
+        } else {
+            // Try to use visualization URL from segmentation data
+            if (this.segmentationData.visualization_url) {
+                console.log('Using visualization URL:', this.segmentationData.visualization_url);
+                this.frameImage.src = this.segmentationData.visualization_url;
+            } else {
+                console.log('No visualization URL found in segmentation data:', this.segmentationData);
+            }
+        }
+
+        // Image will display directly without overlays
 
         // Display areas grid
         this.displayAreasGrid();
@@ -294,7 +377,7 @@ class AreaSegmentationUI {
     }
 
     updateSummary() {
-        const areaTypesSet = new Set(this.areasData.map(area => area.area_type));
+        const areaTypesSet = new Set(this.areasData.map(area => area.area_type || area.label || 'unknown'));
         const totalArea = this.areasData.reduce((sum, area) => sum + (area.dimensions?.area || 0), 0);
 
         this.totalAreas.textContent = this.areasData.length;
@@ -324,36 +407,64 @@ class AreaSegmentationUI {
         ];
 
         this.areasData.forEach((area, index) => {
-            if (!area.polygon || area.polygon.length === 0) return;
+            // Handle both polygon and bbox formats
+            if (area.bbox) {
+                // Draw bounding box for Replicate API results
+                const color = colors[index % colors.length];
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color + '40'; // Add transparency
+                ctx.lineWidth = 2;
 
-            const color = colors[index % colors.length];
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color + '40'; // Add transparency
-            ctx.lineWidth = 2;
+                const x1 = area.bbox.x1 * scaleX;
+                const y1 = area.bbox.y1 * scaleY;
+                const x2 = area.bbox.x2 * scaleX;
+                const y2 = area.bbox.y2 * scaleY;
 
-            ctx.beginPath();
-            area.polygon.forEach((point, i) => {
-                const x = point[0] * scaleX;
-                const y = point[1] * scaleY;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+                ctx.beginPath();
+                ctx.rect(x1, y1, x2 - x1, y2 - y1);
+                ctx.fill();
+                ctx.stroke();
 
-            // Add label
-            const centerX = area.polygon.reduce((sum, p) => sum + p[0], 0) / area.polygon.length * scaleX;
-            const centerY = area.polygon.reduce((sum, p) => sum + p[1], 0) / area.polygon.length * scaleY;
-            
-            ctx.fillStyle = color;
-            ctx.font = '14px Inter, sans-serif';
-            ctx.fontWeight = 'bold';
-            ctx.textAlign = 'center';
-            ctx.fillText(area.area_type.replace('_', ' ').toUpperCase(), centerX, centerY);
+                // Add label
+                const centerX = (x1 + x2) / 2;
+                const centerY = (y1 + y2) / 2;
+                
+                ctx.fillStyle = color;
+                ctx.font = '14px Inter, sans-serif';
+                ctx.fontWeight = 'bold';
+                ctx.textAlign = 'center';
+                ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+            } else if (area.polygon && area.polygon.length > 0) {
+                // Draw polygon for other API results
+                const color = colors[index % colors.length];
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color + '40'; // Add transparency
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                area.polygon.forEach((point, i) => {
+                    const x = point[0] * scaleX;
+                    const y = point[1] * scaleY;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Add label
+                const centerX = area.polygon.reduce((sum, p) => sum + p[0], 0) / area.polygon.length * scaleX;
+                const centerY = area.polygon.reduce((sum, p) => sum + p[1], 0) / area.polygon.length * scaleY;
+                
+                ctx.fillStyle = color;
+                ctx.font = '14px Inter, sans-serif';
+                ctx.fontWeight = 'bold';
+                ctx.textAlign = 'center';
+                ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+            }
         });
     }
 
@@ -382,19 +493,22 @@ class AreaSegmentationUI {
         const card = document.createElement('div');
         card.className = `area-card border-2 ${cardColor} rounded-lg p-4 cursor-pointer transition-all ${isVerified ? 'ring-2 ring-green-500' : ''}`;
         
+        const areaType = area.area_type || area.label || 'unknown';
+        const confidence = area.confidence || 0;
+        
         card.innerHTML = `
             <div class="flex justify-between items-start mb-3">
                 <div class="flex-1">
-                    <h3 class="font-medium text-gray-900 capitalize mb-1">${area.area_type.replace('_', ' ')}</h3>
-                    <p class="text-sm text-gray-600">Confidence: ${(area.confidence * 100).toFixed(1)}%</p>
+                    <h3 class="font-medium text-gray-900 capitalize mb-1">${areaType.replace('_', ' ')}</h3>
+                    <p class="text-sm text-gray-600">Confidence: ${(confidence * 100).toFixed(1)}%</p>
                 </div>
                 ${isVerified ? '<div class="text-green-600"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg></div>' : ''}
             </div>
             
             <div class="space-y-1 text-sm text-gray-600">
-                <div>Width: ${area.dimensions?.width?.toFixed(1) || 'N/A'}m</div>
-                <div>Height: ${area.dimensions?.height?.toFixed(1) || 'N/A'}m</div>
-                <div>Area: ${area.dimensions?.area?.toFixed(1) || 'N/A'}m²</div>
+                <div>Type: ${areaType}</div>
+                <div>Source: ${area.source_frame || 'N/A'}</div>
+                <div>Detection: ${area.source || 'N/A'}</div>
             </div>
             
             <div class="mt-4 flex space-x-2">
@@ -432,7 +546,10 @@ class AreaSegmentationUI {
         // Filter by area type
         const areaTypeFilter = this.filterAreaType.value;
         if (areaTypeFilter !== 'all') {
-            filtered = filtered.filter(area => area.area_type === areaTypeFilter);
+            filtered = filtered.filter(area => {
+                const areaType = area.area_type || area.label || 'unknown';
+                return areaType === areaTypeFilter;
+            });
         }
 
         // Filter by verification status
@@ -453,9 +570,14 @@ class AreaSegmentationUI {
     openVerificationModal(area) {
         this.currentAreaForVerification = area;
         
-        this.modalAreaType.textContent = area.area_type.replace('_', ' ');
-        this.modalConfidence.textContent = (area.confidence * 100).toFixed(1) + '%';
-        this.modalDimensions.textContent = `${area.dimensions?.width?.toFixed(1) || 'N/A'}m × ${area.dimensions?.height?.toFixed(1) || 'N/A'}m`;
+        const areaType = area.area_type || area.label || 'unknown';
+        const confidence = area.confidence || 0;
+        
+        this.modalAreaType.textContent = areaType.replace('_', ' ');
+        this.modalConfidence.textContent = (confidence * 100).toFixed(1) + '%';
+        this.modalDimensions.textContent = area.bbox ? 
+            `${area.bbox.x2 - area.bbox.x1}px × ${area.bbox.y2 - area.bbox.y1}px` : 
+            `${area.dimensions?.width?.toFixed(1) || 'N/A'}m × ${area.dimensions?.height?.toFixed(1) || 'N/A'}m`;
         this.modalAreaSize.textContent = area.dimensions?.area?.toFixed(1) + 'm²' || 'N/A';
         
         // Set the same frame image
@@ -479,8 +601,6 @@ class AreaSegmentationUI {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (!area.polygon || area.polygon.length === 0) return;
-
         const scaleX = canvas.width / img.naturalWidth;
         const scaleY = canvas.height / img.naturalHeight;
 
@@ -488,19 +608,33 @@ class AreaSegmentationUI {
         ctx.fillStyle = '#ef444440';
         ctx.lineWidth = 3;
 
-        ctx.beginPath();
-        area.polygon.forEach((point, i) => {
-            const x = point[0] * scaleX;
-            const y = point[1] * scaleY;
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        if (area.bbox) {
+            // Draw bounding box for Replicate API results
+            const x1 = area.bbox.x1 * scaleX;
+            const y1 = area.bbox.y1 * scaleY;
+            const x2 = area.bbox.x2 * scaleX;
+            const y2 = area.bbox.y2 * scaleY;
+
+            ctx.beginPath();
+            ctx.rect(x1, y1, x2 - x1, y2 - y1);
+            ctx.fill();
+            ctx.stroke();
+        } else if (area.polygon && area.polygon.length > 0) {
+            // Draw polygon for other API results
+            ctx.beginPath();
+            area.polygon.forEach((point, i) => {
+                const x = point[0] * scaleX;
+                const y = point[1] * scaleY;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
     }
 
     closeModal() {
@@ -539,7 +673,6 @@ class AreaSegmentationUI {
 
             this.updateSummary();
             this.displayAreasGrid();
-            this.drawSegmentationOverlay();
             this.closeModal();
 
         } catch (error) {

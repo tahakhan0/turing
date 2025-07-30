@@ -24,15 +24,26 @@ class SegmentManager:
             # Load user data if not already loaded
             self._load_user_data(user_id)
             
-            # Convert area_type string back to enum
-            area_type = AreaType(segment_data['area_type'])
+            # Use the area_type directly as a string (no enum validation needed)
+            area_type = segment_data['area_type']
+            
+            # Calculate basic dimensions from bbox if dimensions not provided
+            dimensions = segment_data.get('dimensions', {})
+            if not dimensions and 'bbox' in segment_data:
+                bbox = segment_data['bbox']
+                width = bbox.get('x2', 0) - bbox.get('x1', 0)
+                height = bbox.get('y2', 0) - bbox.get('y1', 0)
+                dimensions = {
+                    "width": float(width),
+                    "height": float(height),
+                    "area": float(width * height)
+                }
             
             segment = SegmentedArea(
                 area_id=segment_data['area_id'],
                 area_type=area_type,
-                polygon=segment_data['polygon'],
                 confidence=segment_data['confidence'],
-                dimensions=segment_data['dimensions'],
+                dimensions=dimensions,
                 user_id=user_id,
                 verified=segment_data.get('verified', False)
             )
@@ -43,8 +54,8 @@ class SegmentManager:
             return segment.area_id
             
         except Exception as e:
-            logger.error(f"Error adding segment: {str(e)}")
-            raise
+            logger.warning(f"Skipping segment due to error: {str(e)}")
+            return None
     
     def get_segment(self, area_id: str) -> Optional[Dict[str, Any]]:
         """Get a segment by ID"""
@@ -54,8 +65,7 @@ class SegmentManager:
         segment = self.segments[area_id]
         return {
             "area_id": segment.area_id,
-            "area_type": segment.area_type.value,
-            "polygon": segment.polygon,
+            "area_type": segment.area_type,
             "confidence": segment.confidence,
             "dimensions": segment.dimensions,
             "user_id": segment.user_id,
@@ -99,8 +109,7 @@ class SegmentManager:
             if segment.user_id == user_id:
                 user_segments.append({
                     "area_id": segment.area_id,
-                    "area_type": segment.area_type.value,
-                    "polygon": segment.polygon,
+                    "area_type": segment.area_type,
                     "confidence": segment.confidence,
                     "dimensions": segment.dimensions,
                     "verified": segment.verified,
@@ -120,21 +129,48 @@ class SegmentManager:
         # Load segments
         for segment_data in seg_data.get("segments", []):
             try:
-                area_type = AreaType(segment_data['area_type'])
+                # Use area_type directly as string (no enum validation needed)
+                area_type = segment_data['area_type']
+                
+                # Handle missing dimensions
+                dimensions = segment_data.get('dimensions', {})
+                if not dimensions and 'bbox' in segment_data:
+                    bbox = segment_data['bbox']
+                    width = bbox.get('x2', 0) - bbox.get('x1', 0)
+                    height = bbox.get('y2', 0) - bbox.get('y1', 0)
+                    dimensions = {
+                        "width": float(width),
+                        "height": float(height),
+                        "area": float(width * height)
+                    }
+                
+                # Handle different datetime formats (timestamp or ISO string)
+                created_at_raw = segment_data.get('created_at', datetime.now().isoformat())
+                updated_at_raw = segment_data.get('updated_at', datetime.now().isoformat())
+                
+                if isinstance(created_at_raw, (int, float)):
+                    created_at = datetime.fromtimestamp(created_at_raw)
+                else:
+                    created_at = datetime.fromisoformat(created_at_raw)
+                    
+                if isinstance(updated_at_raw, (int, float)):
+                    updated_at = datetime.fromtimestamp(updated_at_raw)
+                else:
+                    updated_at = datetime.fromisoformat(updated_at_raw)
+                
                 segment = SegmentedArea(
                     area_id=segment_data['area_id'],
                     area_type=area_type,
-                    polygon=segment_data['polygon'],
                     confidence=segment_data['confidence'],
-                    dimensions=segment_data['dimensions'],
+                    dimensions=dimensions,
                     user_id=user_id,
                     verified=segment_data.get('verified', False),
-                    created_at=datetime.fromisoformat(segment_data.get('created_at', datetime.now().isoformat())),
-                    updated_at=datetime.fromisoformat(segment_data.get('updated_at', datetime.now().isoformat()))
+                    created_at=created_at,
+                    updated_at=updated_at
                 )
                 self.segments[segment.area_id] = segment
             except Exception as e:
-                logger.error(f"Error loading segment {segment_data.get('area_id', 'unknown')}: {str(e)}")
+                logger.warning(f"Skipping segment {segment_data.get('area_id', 'unknown')} due to error: {str(e)}")
         
         # Load permissions
         for perm_data in seg_data.get("permissions", []):
@@ -163,8 +199,7 @@ class SegmentManager:
             if segment.user_id == user_id:
                 user_segments.append({
                     "area_id": segment.area_id,
-                    "area_type": segment.area_type.value,
-                    "polygon": segment.polygon,
+                    "area_type": segment.area_type,
                     "confidence": segment.confidence,
                     "dimensions": segment.dimensions,
                     "user_id": segment.user_id,
@@ -317,7 +352,7 @@ class SegmentManager:
                 if permission.area_id in self.segments:
                     segment = self.segments[permission.area_id]
                     area_info = {
-                        "area_type": segment.area_type.value,
+                        "area_type": segment.area_type,
                         "verified": segment.verified
                     }
                 
@@ -373,7 +408,7 @@ class SegmentManager:
         # Count by area type
         area_type_counts = {}
         for segment in self.segments.values():
-            area_type = segment.area_type.value
+            area_type = segment.area_type
             area_type_counts[area_type] = area_type_counts.get(area_type, 0) + 1
         
         return {
