@@ -752,117 +752,119 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
 
 def batch_process_video_for_person_detection(video_paths: list, user_id: str) -> VideoAnalysis:
     """
-    Enhanced version of the original function - processes the first video in a list for person detection using YOLOv8,
-    with frame skipping for performance. Maintains backward compatibility.
-    Returns a VideoAnalysis object.
+    Enhanced version of the original function - processes all videos in a list for person detection using YOLOv8,
+    with frame skipping for performance.
+    Returns a single VideoAnalysis object with aggregated results.
     """
     if not video_paths:
         return VideoAnalysis(video_path="", analysis=[])
 
-    video_path_str = video_paths[0]
+    aggregated_frame_analyses = []
+    
+    for video_path_str in video_paths:
+        # Use pathlib to handle file paths robustly
+        video_path = Path(video_path_str)
 
-    # Use pathlib to handle file paths robustly
-    video_path = Path(video_path_str)
-
-    # Check if path exists, if not try to resolve it
-    if not video_path.exists():
-        if not video_path.is_absolute():
-            resolved_path = video_path.resolve()
-            if resolved_path.exists():
-                video_path = resolved_path
-            else:
-                print(f"Video file not found: {video_path_str}")
-                return VideoAnalysis(video_path=video_path_str, analysis=[])
-
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        print(f"Error opening video file: {video_path}")
-        return VideoAnalysis(video_path=video_path_str, analysis=[])
-
-    frame_analyses = []
-    frame_count = 0
-    previous_frame = None
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Skip similar frames to reduce duplicates
-        if previous_frame is not None and frames_are_similar(previous_frame, frame):
-            frame_count += 1
-            continue
-        
-        previous_frame = frame.copy()
-
-        # --- FRAME SKIPPING LOGIC ---
-        # Only process the frame if its count is a multiple of FRAME_INTERVAL
-        if frame_count % FRAME_INTERVAL == 0:
-            # Save unique frame to storage for segmentation
-            try:
-                # Generate unique filename with frame number and hash
-                frame_hash = hashlib.md5(frame.tobytes()).hexdigest()[:8]
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                frame_filename = f"frame_{frame_count}_{timestamp}_{frame_hash}.jpg"
-                
-                # Encode frame as JPEG bytes
-                success, encoded_frame = cv2.imencode('.jpg', frame)
-                if success:
-                    frame_bytes = encoded_frame.tobytes()
-                    saved_path = storage.save_extracted_frame(user_id, frame_bytes, frame_filename)
-                    print(f"Saved frame {frame_count} for segmentation: {saved_path}")
+        # Check if path exists, if not try to resolve it
+        if not video_path.exists():
+            if not video_path.is_absolute():
+                resolved_path = video_path.resolve()
+                if resolved_path.exists():
+                    video_path = resolved_path
                 else:
-                    print(f"Failed to encode frame {frame_count}")
-            except Exception as e:
-                print(f"Error saving frame {frame_count}: {e}")
-            # Perform inference on the current frame
-            results = yolo_model(frame)
+                    print(f"Video file not found: {video_path_str}")
+                    continue  # Skip to the next video
 
-            # Extract detections
-            detections = []
-            if results[0].boxes is not None:
-                boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
-                confidences = results[0].boxes.conf.cpu().numpy()
-                class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            print(f"Error opening video file: {video_path}")
+            continue  # Skip to the next video
 
-                for i, box in enumerate(boxes):
-                    class_name = yolo_model.names[class_ids[i]]
-                    if class_name == "person":
-                        bbox = BoundingBox(x1=int(box[0]), y1=int(box[1]), x2=int(box[2]), y2=int(box[3]))
-                        detection = Detection(
-                            bbox=bbox,
-                            confidence=float(confidences[i]),
-                            class_name=class_name
-                        )
-                        # Add default values for enhanced features
-                        detection.person_name = None  # Don't default to "unknown", let UI prompt
-                        detection.recognition_confidence = 0.0
-                        detection.detection_type = "person"
-                        detection.person_id = i  # Set person_id based on detection order
-                        detections.append(detection)
+        frame_count = 0
+        previous_frame = None
 
-            # Apply body-based recognition to detections
-            detections = recognize_multiple_persons_by_body(frame, detections, user_id)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-            # Generate visualization image if there are detections
-            visualization_url = None
-            if detections:
-                visualization_url = create_visualization_image(frame, detections, frame_count, user_id, video_path_str)
+            # Skip similar frames to reduce duplicates
+            if previous_frame is not None and frames_are_similar(previous_frame, frame):
+                frame_count += 1
+                continue
+            
+            previous_frame = frame.copy()
 
-            # Only append analysis for processed frames
-            frame_analysis = FrameAnalysis(
-                frame_number=frame_count,
-                detections=detections,
-                visualization_url=visualization_url
-            )
-            frame_analyses.append(frame_analysis)
+            # --- FRAME SKIPPING LOGIC ---
+            # Only process the frame if its count is a multiple of FRAME_INTERVAL
+            if frame_count % FRAME_INTERVAL == 0:
+                # Save unique frame to storage for segmentation
+                try:
+                    # Generate unique filename with frame number and hash
+                    frame_hash = hashlib.md5(frame.tobytes()).hexdigest()[:8]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    frame_filename = f"frame_{frame_count}_{timestamp}_{frame_hash}.jpg"
+                    
+                    # Encode frame as JPEG bytes
+                    success, encoded_frame = cv2.imencode('.jpg', frame)
+                    if success:
+                        frame_bytes = encoded_frame.tobytes()
+                        saved_path = storage.save_extracted_frame(user_id, frame_bytes, frame_filename)
+                        print(f"Saved frame {frame_count} for segmentation: {saved_path}")
+                    else:
+                        print(f"Failed to encode frame {frame_count}")
+                except Exception as e:
+                    print(f"Error saving frame {frame_count}: {e}")
+                # Perform inference on the current frame
+                results = yolo_model(frame)
 
-        # Increment frame count for every frame read
-        frame_count += 1
+                # Extract detections
+                detections = []
+                if results[0].boxes is not None:
+                    boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+                    confidences = results[0].boxes.conf.cpu().numpy()
+                    class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
 
-    cap.release()
+                    for i, box in enumerate(boxes):
+                        class_name = yolo_model.names[class_ids[i]]
+                        if class_name == "person":
+                            bbox = BoundingBox(x1=int(box[0]), y1=int(box[1]), x2=int(box[2]), y2=int(box[3]))
+                            detection = Detection(
+                                bbox=bbox,
+                                confidence=float(confidences[i]),
+                                class_name=class_name
+                            )
+                            # Add default values for enhanced features
+                            detection.person_name = None  # Don't default to "unknown", let UI prompt
+                            detection.recognition_confidence = 0.0
+                            detection.detection_type = "person"
+                            detection.person_id = i  # Set person_id based on detection order
+                            detections.append(detection)
 
-    return VideoAnalysis(video_path=video_path_str, analysis=frame_analyses)
+                # Apply body-based recognition to detections
+                detections = recognize_multiple_persons_by_body(frame, detections, user_id)
+
+                # Generate visualization image if there are detections
+                visualization_url = None
+                if detections:
+                    visualization_url = create_visualization_image(frame, detections, frame_count, user_id, video_path_str)
+
+                # Only append analysis for processed frames
+                frame_analysis = FrameAnalysis(
+                    frame_number=frame_count,
+                    detections=detections,
+                    visualization_url=visualization_url,
+                    video_path=video_path_str  # Add video_path to each frame analysis
+                )
+                aggregated_frame_analyses.append(frame_analysis)
+
+            # Increment frame count for every frame read
+            frame_count += 1
+
+        cap.release()
+
+    # Return a single VideoAnalysis object with all the aggregated results
+    return VideoAnalysis(video_path=", ".join(video_paths), analysis=aggregated_frame_analyses)
 
 
 def train_person_from_detections(user_id, person_name, detection_images):
