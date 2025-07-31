@@ -15,6 +15,10 @@ from .service import (
     save_face_encoding
 )
 from . import yolo_service
+from ..storage.persistent_storage import PersistentStorage
+
+# Initialize persistent storage
+storage = PersistentStorage()
 
 router = APIRouter()
 
@@ -223,7 +227,7 @@ def list_images():
     """
     List all available visualization images.
     """
-    images_dir = "/app/static/visualizations"
+    images_dir = os.path.join(storage.base_path, "visualizations")
     if not os.path.exists(images_dir):
         return {"images": []}
     
@@ -388,8 +392,8 @@ def extract_frame(payload: dict):
         if not ret:
             raise HTTPException(status_code=400, detail="Cannot read frame from video")
         
-        # Save frame to static directory
-        frames_dir = "/app/static/extracted_frames"
+        # Save frame to static directory using persistent storage
+        frames_dir = os.path.join(storage.base_path, "extracted_frames")
         os.makedirs(frames_dir, exist_ok=True)
         
         frame_filename = f"{user_id}_frame_{frame_number}.jpg"

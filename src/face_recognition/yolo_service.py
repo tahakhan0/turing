@@ -76,8 +76,8 @@ except Exception as e:
 # Process every Nth frame to speed up video analysis.
 FRAME_INTERVAL = 5
 
-# Directory for storing visualization images
-VISUALIZATIONS_DIR = "/app/static/visualizations"
+# Directory for storing visualization images - use persistent storage base path
+VISUALIZATIONS_DIR = os.path.join(storage.base_path, "visualizations")
 
 # Temporal tracking for consistency across frames
 class PersonTracker:

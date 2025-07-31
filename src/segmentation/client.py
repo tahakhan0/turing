@@ -9,9 +9,13 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 import replicate
 from pathlib import Path
+from ..storage.persistent_storage import PersistentStorage
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize persistent storage
+storage = PersistentStorage()
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +57,8 @@ class ReplicateSegmentationClient:
             return None
             
         try:
-            # Create directory for saving visualizations
-            viz_dir = Path("/app/static/segmentation_visualizations")
+            # Create directory for saving visualizations using persistent storage
+            viz_dir = Path(storage.base_path) / "segmentation_visualizations"
             viz_dir.mkdir(parents=True, exist_ok=True)
             
             # Generate unique filename
