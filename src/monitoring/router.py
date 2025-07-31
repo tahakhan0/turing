@@ -7,7 +7,7 @@ import logging
 
 from .detection_service import DetectionService
 from .notification_service import notification_service
-from .gemini_service import gemini_service
+from . import gemini_service as gemini_service_client
 from .schemas import MonitoringRequest, MonitoringResponse, VideoAnalysisResponse, NotificationRequest
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ router = APIRouter()
 
 # Initialize detection service
 detection_service = DetectionService()
+gemini_service = gemini_service_client.GeminiAnalysisService()
 
 @router.post("/analyze/frame", response_model=MonitoringResponse)
 async def analyze_frame(user_id: str, file: UploadFile = File(...)):
