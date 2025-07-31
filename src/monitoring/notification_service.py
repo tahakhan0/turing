@@ -14,9 +14,12 @@ from datetime import datetime
 from fastapi import WebSocket
 import asyncio
 
-from .gemini_service import gemini_service
+from . import gemini_service as gemini_service_client
+
 
 logger = logging.getLogger(__name__)
+gemini_service  = gemini_service_client.GeminiAnalysisService()
+
 
 class NotificationService:
     """Service for handling web notifications"""
