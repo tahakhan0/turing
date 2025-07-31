@@ -11,6 +11,7 @@ import numpy as np
 from typing import Dict, Any, Optional
 import requests
 import json
+from google import genai
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,8 @@ class GeminiAnalysisService:
     
     def __init__(self):
         self.api_key = os.getenv("GOOGLE_GEMINI_API_KEY")
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-        
+        self.client = genai.Client(api_key=os.getenv("GOOGLE_GEMINI_API_KEY"))
+
         if not self.api_key:
             logger.warning("GOOGLE_GEMINI_API_KEY not set. Gemini analysis will be disabled.")
             self.enabled = False
@@ -58,10 +59,12 @@ Please describe:
 2. The setting/environment visible in the image
 3. Any relevant security concerns or notable observations
 4. A brief assessment of the situation
+5. If access is unauthorized, you should return that it needs immediate attention. If you detect a kid, keep the tone soft
+because you're alerting a parent or guardian. But still keep the level of alert so that they respond quickly.
 
-Keep your response concise (2-3 sentences) and professional, as it will be used in a security alert notification.
+Keep your response concise (2 sentences) and friendly, as it will be used in a security alert notification.
 
-Focus on observable facts rather than speculation."""
+Focus on observable facts rather than speculation. Try not to sound like a robot. The text is read by a human. Keep your tone friendly and precise"""
 
         return prompt
     
@@ -81,7 +84,9 @@ Please describe:
 3. Any potential security concerns
 4. A brief assessment of the activity
 
-Keep your response concise (2-3 sentences) and professional, as it will be used in a security alert. Focus on observable behavior and context."""
+Keep your response concise (2-3 sentences) and professional, as it will be used in a security alert. Focus on observable behavior and context.
+Try not to sound like a robot. The text is read by a human. Keep your tone friendly and precise
+"""
 
         return prompt
     
@@ -90,49 +95,31 @@ Keep your response concise (2-3 sentences) and professional, as it will be used 
         try:
             if not self.enabled:
                 return "Gemini analysis not available (API key not configured)"
-            
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "text": prompt
-                            },
-                            {
-                                "inline_data": {
-                                    "mime_type": "image/jpeg",
-                                    "data": image_base64
-                                }
-                            }
-                        ]
-                    }
+
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[
+                    genai.types.Part.from_bytes(
+                        data=image_base64,
+                        mime_type='image/jpeg',
+                    ),
+                    prompt
                 ]
-            }
-            
-            headers = {
-                "Content-Type": "application/json"
-            }
-            
-            response = requests.post(
-                f"{self.base_url}?key={self.api_key}",
-                headers=headers,
-                json=payload,
-                timeout=30
             )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            # Extract generated text
-            if "candidates" in result and len(result["candidates"]) > 0:
-                candidate = result["candidates"][0]
-                if "content" in candidate and "parts" in candidate["content"]:
-                    parts = candidate["content"]["parts"]
-                    if len(parts) > 0 and "text" in parts[0]:
-                        return parts[0]["text"].strip()
-            
-            logger.warning("Unexpected Gemini API response format")
-            return "Unable to analyze image - unexpected response format"
+            return response.text
+            # response.raise_for_status()
+            # result = response.json()
+            #
+            # # Extract generated text
+            # if "candidates" in result and len(result["candidates"]) > 0:
+            #     candidate = result["candidates"][0]
+            #     if "content" in candidate and "parts" in candidate["content"]:
+            #         parts = candidate["content"]["parts"]
+            #         if len(parts) > 0 and "text" in parts[0]:
+            #             return parts[0]["text"].strip()
+            #
+            # logger.warning("Unexpected Gemini API response format")
+            # return "Unable to analyze image - unexpected response format"
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Gemini API request failed: {e}")
@@ -216,6 +203,3 @@ Keep your response concise (2-3 sentences) and professional, as it will be used 
             "api_configured": self.api_key is not None,
             "service": "Google Gemini 1.5 Flash"
         }
-
-# Global Gemini service instance
-gemini_service = GeminiAnalysisService()
