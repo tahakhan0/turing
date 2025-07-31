@@ -615,7 +615,7 @@ class FaceRecognitionUI {
         
         // Color names for display (matching the colors in the backend)
         const colorNames = [
-            'Green', 'Blue', 'Red', 'Cyan', 'Magenta', 'Yellow',
+            'Green', 'Red', 'Blue', 'Cyan', 'Magenta', 'Yellow',
             'Purple', 'Orange', 'Light Blue', 'Lime', 'Deep Pink', 'Dark Turquoise'
         ];
         
@@ -741,7 +741,7 @@ class FaceRecognitionUI {
         // Set frame number with detection type information
         const detectionTypeText = face.detectionType === 'face' ? 'Face Detection' : 'Person Detection';
         const colorNames = [
-            'Green', 'Blue', 'Red', 'Cyan', 'Magenta', 'Yellow',
+            'Green', 'Red', 'Blue', 'Cyan', 'Magenta', 'Yellow',
             'Purple', 'Orange', 'Light Blue', 'Lime', 'Deep Pink', 'Dark Turquoise'
         ];
         const colorInfo = face.detectionType === 'person' && face.personId !== undefined ? 
@@ -818,7 +818,7 @@ class FaceRecognitionUI {
         
         // Color names for display (matching the colors in the backend)
         const colorNames = [
-            'Green', 'Blue', 'Red', 'Cyan', 'Magenta', 'Yellow',
+            'Green', 'Red', 'Blue', 'Cyan', 'Magenta', 'Yellow',
             'Purple', 'Orange', 'Light Blue', 'Lime', 'Deep Pink', 'Dark Turquoise'
         ];
         

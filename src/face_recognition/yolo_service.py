@@ -655,8 +655,8 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
         # Color scheme for different person IDs (BGR format for OpenCV)
         person_colors = [
             (0, 255, 0),      # Green
-            (255, 0, 0),      # Blue  
-            (0, 0, 255),      # Red
+            (0, 0, 255),      # Red  
+            (255, 0, 0),      # Blue
             (255, 255, 0),    # Cyan
             (255, 0, 255),    # Magenta
             (0, 255, 255),    # Yellow
@@ -682,8 +682,9 @@ def create_visualization_image(frame, detections, frame_number, user_id, video_p
         for i, detection in enumerate(detections):
             bbox = detection.bbox
 
-            # Assign a unique color to each detection
-            color = person_colors[i % len(person_colors)]
+            # Assign a unique color to each detection based on person_id
+            person_id = getattr(detection, 'person_id', i)  # Fallback to enumeration index if person_id not set
+            color = person_colors[person_id % len(person_colors)]
 
             # Determine detection type and color
             detection_type = getattr(detection, 'detection_type', 'person')
