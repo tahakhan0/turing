@@ -278,122 +278,22 @@ class FaceRecognitionUI {
         this.frameGroups = new Map(); // Group detections by frame for consolidated labeling
         let faceId = 0;
 
-        console.log('Processing face data from:', analysisData);
-        
-        // Check if this is a recognition analysis (has detections with frame-by-frame data)
-        if (analysisData.detections !== undefined && analysisData.total_frames !== undefined) {
-            // New face recognition analysis format
-            console.log('Processing face recognition analysis with detections:', analysisData);
-            
-            analysisData.detections.forEach(frameData => {
-                // Only process frames that have actual face detections
-                if (frameData.detections && frameData.detections.length > 0) {
-                    const frameKey = frameData.frame_number;
-                    if (!this.frameGroups.has(frameKey)) {
-                        this.frameGroups.set(frameKey, {
-                            frameNumber: frameData.frame_number,
-                            detections: [],
-                            visualizationUrl: frameData.visualization_url,
-                            videoPath: analysisData.video_path,
-                            videoName: analysisData.video_path ? analysisData.video_path.split('/').pop() : 'Unknown'
-                        });
-                    }
-                    
-                    frameData.detections.forEach(detection => {
-                        const isRecognized = detection.recognition_status === 'recognized';
-                        
-                        const faceData = {
-                            id: faceId++,
-                            frameNumber: frameData.frame_number,
-                            timestamp: frameData.timestamp,
-                            bbox: detection.bbox,
-                            confidence: detection.confidence || 0.0, // Use actual confidence from backend
-                            visualizationUrl: frameData.visualization_url,
-                            videoName: analysisData.video_path || 'Unknown',
-                            videoPath: analysisData.video_path,
-                            labeled: isRecognized,
-                            personName: detection.person_name || detection.name || '',
-                            status: isRecognized ? 'recognized' : 'unrecognized',
-                            recognitionStatus: detection.recognition_status,
-                            faceEncoding: detection.face_encoding, // Store for potential saving
-                            detectionType: 'face',
-                            personId: detection.person_id || 0
-                        };
-                        
-                        this.faceData.push(faceData);
-                        this.frameGroups.get(frameKey).detections.push(faceData);
-                    });
-                } else {
-                    console.log(`Skipping frame ${frameData.frame_number} - no face detections found`);
-                }
-            });
-        } else if (analysisData.unique_persons !== undefined) {
-            // Directory analysis format
-            console.log('Processing directory analysis with unique persons:', analysisData.unique_persons);
-            
-            analysisData.detections.forEach(detection => {
-                console.log('Processing unique person detection:', detection);
-                
-                const frameKey = detection.frame_number;
-                if (!this.frameGroups.has(frameKey)) {
-                    this.frameGroups.set(frameKey, {
-                        frameNumber: detection.frame_number,
-                        detections: [],
-                        visualizationUrl: detection.visualization_url,
-                        videoPath: detection.video_path,
-                        videoName: detection.video_name || 'Unknown'
-                    });
-                }
-                
-                const faceData = {
-                    id: faceId++,
-                    frameNumber: detection.frame_number,
-                    timestamp: detection.timestamp,
-                    bbox: detection.bbox,
-                    confidence: detection.confidence,
-                    visualizationUrl: detection.visualization_url,
-                    videoName: detection.video_name || 'Unknown',
-                    videoPath: detection.video_path,
-                    labeled: false,
-                    personName: '',
-                    status: 'unlabeled',
-                    detectionType: 'person',
-                    personId: 0
-                };
-                
-                this.faceData.push(faceData);
-                this.frameGroups.get(frameKey).detections.push(faceData);
-            });
-        } else if (analysisData.analysis !== undefined) {
-            // Single video analysis format (VideoAnalysis)
-            console.log('Processing single video analysis, analysis array:', analysisData.analysis);
-            
+        if (analysisData.analysis && Array.isArray(analysisData.analysis)) {
             analysisData.analysis.forEach(frameAnalysis => {
-                console.log('Processing frame analysis:', frameAnalysis);
-                
-                // Include both person and face detections
-                const allDetections = frameAnalysis.detections.filter(d => 
-                    d.class_name === 'person' || d.class_name === 'face'
-                );
-                console.log('Person and face detections in this frame:', allDetections);
-                
-                // Only create frame group if there are actual detections
-                if (allDetections.length > 0) {
-                    const frameKey = frameAnalysis.frame_number;
+                if (frameAnalysis.detections && frameAnalysis.detections.length > 0) {
+                    const frameKey = `${frameAnalysis.video_path}_${frameAnalysis.frame_number}`;
                     if (!this.frameGroups.has(frameKey)) {
                         this.frameGroups.set(frameKey, {
                             frameNumber: frameAnalysis.frame_number,
                             detections: [],
                             visualizationUrl: frameAnalysis.visualization_url,
-                            videoPath: analysisData.video_path,
-                            videoName: analysisData.video_path ? analysisData.video_path.split('/').pop() : 'Unknown'
+                            videoPath: frameAnalysis.video_path, // Use video_path from frameAnalysis
+                            videoName: frameAnalysis.video_path ? frameAnalysis.video_path.split('/').pop() : 'Unknown'
                         });
                     }
-                    
-                    allDetections.forEach(detection => {
-                        // Check if this detection is already labeled/recognized
+
+                    frameAnalysis.detections.forEach(detection => {
                         const isLabeled = detection.person_name && detection.person_name.trim() !== '';
-                        
                         const faceData = {
                             id: faceId++,
                             frameNumber: frameAnalysis.frame_number,
@@ -401,27 +301,59 @@ class FaceRecognitionUI {
                             bbox: detection.bbox,
                             confidence: detection.confidence,
                             visualizationUrl: frameAnalysis.visualization_url,
-                            videoName: analysisData.video_path || 'Unknown',
-                            videoPath: analysisData.video_path,
+                            videoName: frameAnalysis.video_path ? frameAnalysis.video_path.split('/').pop() : 'Unknown',
+                            videoPath: frameAnalysis.video_path,
                             labeled: isLabeled,
                             personName: detection.person_name || '',
                             status: isLabeled ? 'labeled' : 'unlabeled',
-                            detectionType: detection.detection_type || 'person', // Store detection type
-                            personId: detection.person_id || 0 // Store person ID
+                            detectionType: detection.detection_type || 'person',
+                            personId: detection.person_id || 0
                         };
-                        
                         this.faceData.push(faceData);
                         this.frameGroups.get(frameKey).detections.push(faceData);
                     });
-                } else {
-                    console.log(`Skipping frame ${frameAnalysis.frame_number} - no person or face detections found`);
+                }
+            });
+        } else if (analysisData.detections && Array.isArray(analysisData.detections)) {
+            // Handle the case where the top-level object has a 'detections' array (for single frame analysis)
+            analysisData.detections.forEach(frameData => {
+                if (frameData.detections && frameData.detections.length > 0) {
+                    const frameKey = `${analysisData.video_path}_${frameData.frame_number}`;
+                    if (!this.frameGroups.has(frameKey)) {
+                        this.frameGroups.set(frameKey, {
+                            frameNumber: frameData.frame_number,
+                            detections: [],
+                            visualizationUrl: frameData.visualization_url,
+                            videoPath: analysisData.video_path,
+                            videoName: analysisData.video_path ? analysisData.video_path.split('/').pop() : 'Unknown'
+                        });
+                    }
+
+                    frameData.detections.forEach(detection => {
+                        const isRecognized = detection.recognition_status === 'recognized';
+                        const faceData = {
+                            id: faceId++,
+                            frameNumber: frameData.frame_number,
+                            timestamp: frameData.timestamp,
+                            bbox: detection.bbox,
+                            confidence: detection.confidence || 0.0,
+                            visualizationUrl: frameData.visualization_url,
+                            videoName: analysisData.video_path || 'Unknown',
+                            videoPath: analysisData.video_path,
+                            labeled: isRecognized,
+                            personName: detection.person_name || detection.name || '',
+                            status: isRecognized ? 'recognized' : 'unrecognized',
+                            recognitionStatus: detection.recognition_status,
+                            faceEncoding: detection.face_encoding,
+                            detectionType: 'face',
+                            personId: detection.person_id || 0
+                        };
+                        this.faceData.push(faceData);
+                        this.frameGroups.get(frameKey).detections.push(faceData);
+                    });
                 }
             });
         }
-
-        console.log(`Processed ${this.faceData.length} faces from analysis`);
-        console.log('Frame groups:', this.frameGroups);
-        console.log('Face data:', this.faceData);
     }
 
     updateSummary(data) {
@@ -625,7 +557,6 @@ class FaceRecognitionUI {
 
     async openConsolidatedLabelingModal(frameGroup) {
         this.currentFrameGroup = frameGroup;
-        console.log('Opening consolidated labeling modal for frame group:', frameGroup);
         
         // Set modal title
         this.modalTitle.textContent = frameGroup.detections.length > 1 ? 'Label All Detections' : 'Label Detection';
@@ -846,10 +777,10 @@ class FaceRecognitionUI {
         this.singleLabelingForm.classList.add('hidden');
     }
 
-    showBulkLabelingControls(frameDetections) {
-        this.currentFrameDetections = frameDetections;
+    showBulkLabelingControls(frameGroup) {
+        this.currentFrameGroup = frameGroup;
         this.bulkLabelingForm.classList.remove('hidden');
-        this.createBulkPersonInputs(frameDetections);
+        this.createBulkPersonInputs(frameGroup);
         this.updateBulkNameSuggestions();
     }
 
@@ -858,7 +789,7 @@ class FaceRecognitionUI {
         this.currentFrameDetections = null;
     }
 
-    createBulkPersonInputs(frameDetections) {
+    createBulkPersonInputs(frameGroup) {
         this.bulkPersonInputs.innerHTML = '';
         
         // Color names for display (matching the colors in the backend)
@@ -867,15 +798,15 @@ class FaceRecognitionUI {
             'Purple', 'Orange', 'Light Blue', 'Lime', 'Deep Pink', 'Dark Turquoise'
         ];
         
-        frameDetections.detections.forEach((detection, index) => {
-            const colorName = colorNames[detection.person_id] || `Color ${detection.person_id}`;
+        frameGroup.detections.forEach((detection, index) => {
+            const colorName = colorNames[detection.personId % colorNames.length] || `Color ${detection.personId}`;
             
             const personDiv = document.createElement('div');
             personDiv.className = 'border border-gray-200 rounded-md p-4 bg-gray-50';
             personDiv.innerHTML = `
                 <div class="flex items-center justify-between mb-3">
                     <label class="text-sm font-medium text-gray-700">
-                        Person ${detection.person_id} (${colorName} Box)
+                        Person ${detection.personId} (${colorName} Box)
                     </label>
                     <span class="text-xs text-gray-500">
                         Confidence: ${(detection.confidence * 100).toFixed(1)}%
@@ -883,10 +814,10 @@ class FaceRecognitionUI {
                 </div>
                 <input 
                     type="text" 
-                    id="person-${detection.person_id}-name" 
-                    data-person-id="${detection.person_id}"
+                    id="person-${detection.personId}-name" 
+                    data-person-id="${detection.personId}"
                     data-bbox='${JSON.stringify(detection.bbox)}'
-                    data-detection-type="${detection.detection_type}"
+                    data-detection-type="${detection.detectionType}"
                     placeholder="Enter person's name" 
                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue text-sm"
                 >
