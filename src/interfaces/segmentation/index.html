@@ -40,6 +40,37 @@
             background-color: rgba(255, 255, 255, 0.1);
             pointer-events: none;
         }
+        .segmented-image-card {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .segmented-image-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .verification-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            padding: 16px;
+            border-radius: 0 0 12px 12px;
+        }
+        .inline-verification {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .verification-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px 8px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+        }
         .progress-step {
             transition: all 0.3s ease;
         }
@@ -213,33 +244,18 @@
                 </div>
             </div>
 
-            <!-- Frame Visualization -->
-            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-lg font-medium text-gray-900">Frame Analysis</h2>
-                    <div class="flex space-x-2">
-                        <button id="show-original" class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600 transition-colors">
-                            Original
-                        </button>
-                        <button id="show-segmented" class="bg-brand-purple text-white px-3 py-1 rounded text-sm hover:bg-brand-blue transition-colors">
-                            Segmented
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="frame-container" class="relative max-w-full mx-auto">
-                    <img id="frame-image" src="" alt="Video frame" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
-                    <canvas id="segmentation-overlay" class="absolute top-0 left-0 pointer-events-none"></canvas>
-                </div>
-            </div>
-
-            <!-- Areas Grid -->
+            <!-- Unified Segmented Images View -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-lg font-medium text-gray-900">Detected Areas</h2>
-                    <button id="verify-all" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50">
-                        Verify All Areas
-                    </button>
+                    <h2 class="text-lg font-medium text-gray-900">All Segmented Areas</h2>
+                    <div class="flex space-x-2">
+                        <button id="verify-all" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50">
+                            Verify All Areas
+                        </button>
+                        <button id="proceed-to-permissions" class="bg-brand-purple hover:bg-brand-blue text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            Proceed to Permissions →
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Filter Controls -->
@@ -262,11 +278,15 @@
                         <option value="verified">Verified</option>
                         <option value="unverified">Unverified</option>
                     </select>
+                    <select id="view-mode" class="appearance-none px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
+                        <option value="grid">Grid View</option>
+                        <option value="list">List View</option>
+                    </select>
                 </div>
 
-                <!-- Areas Grid -->
-                <div id="areas-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    <!-- Area cards will be dynamically inserted here -->
+                <!-- Segmented Images Display -->
+                <div id="segmented-images-container">
+                    <!-- Images will be dynamically inserted here -->
                 </div>
             </div>
         </div>
@@ -274,8 +294,17 @@
         <!-- Loading State -->
         <div id="loading-state" class="hidden text-center py-12">
             <div class="loading-spinner mx-auto mb-4"></div>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">Analyzing areas...</h3>
-            <p class="text-gray-600">Our AI is detecting and segmenting areas in your video frame</p>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Segmenting Areas...</h3>
+            <p class="text-gray-600 mb-4">Our AI is analyzing your video frames and detecting different areas</p>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+                <div class="flex items-center justify-center mb-2">
+                    <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-sm font-medium text-blue-800">Processing automatically</span>
+                </div>
+                <p class="text-xs text-blue-700">Using default settings from your backend configuration</p>
+            </div>
         </div>
 
         <!-- Error State -->
@@ -294,71 +323,6 @@
         </div>
     </main>
 
-    <!-- Area Verification Modal -->
-    <div id="verification-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Verify Area Detection</h3>
-                    <button id="close-modal" class="text-gray-400 hover:text-gray-600">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-                
-                <!-- Area Details Display -->
-                <div class="mb-6">
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <span class="text-sm font-medium text-gray-700">Area Type:</span>
-                                <p id="modal-area-type" class="text-sm text-gray-900 capitalize"></p>
-                            </div>
-                            <div>
-                                <span class="text-sm font-medium text-gray-700">Confidence:</span>
-                                <p id="modal-confidence" class="text-sm text-gray-900"></p>
-                            </div>
-                            <div>
-                                <span class="text-sm font-medium text-gray-700">Dimensions:</span>
-                                <p id="modal-dimensions" class="text-sm text-gray-900"></p>
-                            </div>
-                            <div>
-                                <span class="text-sm font-medium text-gray-700">Area:</span>
-                                <p id="modal-area-size" class="text-sm text-gray-900"></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Area Image Display -->
-                <div class="mb-6 text-center">
-                    <div id="modal-area-preview" class="relative max-w-full mx-auto">
-                        <img id="modal-area-image" src="" alt="Area preview" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
-                        <canvas id="modal-overlay-canvas" class="absolute top-0 left-0 pointer-events-none"></canvas>
-                    </div>
-                </div>
-                
-                <!-- Verification Form -->
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Is this area correctly identified?</label>
-                        <p class="text-sm text-gray-600 mb-4">Review the highlighted area and confirm if the AI correctly identified this space.</p>
-                    </div>
-                    
-                    <!-- Action Buttons -->
-                    <div class="flex space-x-3 pt-4">
-                        <button id="verify-area" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            ✓ Verify Area
-                        </button>
-                        <button id="reject-area" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            ✗ Reject Area
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <script src="app.js"></script>
 </body>

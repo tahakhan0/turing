@@ -456,12 +456,57 @@ class FaceRecognitionUI {
 
     updateLabeledCount() {
         const labeled = this.faceData.filter(face => face.labeled).length;
+        const total = this.faceData.length;
         this.labeledFacesCount.textContent = labeled;
         
         // Enable continue button if we have analysis data and some faces are labeled
         if (this.currentAnalysisData && labeled > 0) {
             this.continueToSegmentationBtn.disabled = false;
+            
+            // Show completion notification and make button more prominent
+            if (labeled === total && total > 0) {
+                this.showCompletionNotification();
+                this.continueToSegmentationBtn.classList.add('animate-pulse', 'ring-4', 'ring-green-300');
+                this.continueToSegmentationBtn.textContent = 'All Faces Labeled! Continue to Areas →';
+            } else if (labeled > 0) {
+                this.continueToSegmentationBtn.classList.remove('animate-pulse', 'ring-4', 'ring-green-300');
+                this.continueToSegmentationBtn.textContent = `Continue with ${labeled} Labeled Faces →`;
+            }
+        } else {
+            this.continueToSegmentationBtn.disabled = true;
+            this.continueToSegmentationBtn.classList.remove('animate-pulse', 'ring-4', 'ring-green-300');
+            this.continueToSegmentationBtn.textContent = 'Continue to Areas →';
         }
+    }
+    
+    showCompletionNotification() {
+        // Create a notification banner
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-20 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-bounce';
+        notification.innerHTML = `
+            <div class="flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="font-medium">All faces labeled! Ready for area segmentation.</span>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
+        
+        // Add click to dismiss
+        notification.addEventListener('click', () => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        });
     }
 
     renderFaceGrid() {
@@ -1281,12 +1326,13 @@ class FaceRecognitionUI {
             return;
         }
 
-        // Navigate to segmentation interface with current data
+        // Navigate directly to segmentation interface with current data
         const params = new URLSearchParams({
             video_path: this.currentAnalysisData.video_path || this.videoPathInput.value.trim(),
             user_id: this.currentAnalysisData.user_id,
             service_url: this.apiBaseUrl,
-            faces_count: labeledCount.toString()
+            faces_count: labeledCount.toString(),
+            auto_start: 'true'  // Flag to indicate automatic start
         });
 
         window.location.href = `../segmentation/index.html?${params.toString()}`;

@@ -32,6 +32,7 @@ class AreaSegmentationUI {
         // Navigation elements
         this.backToFacesBtn = document.getElementById('back-to-faces');
         this.continueBtn = document.getElementById('continue-to-permissions');
+        this.proceedBtn = document.getElementById('proceed-to-permissions');
 
         // Info display elements
         this.currentVideoPathElement = document.getElementById('current-video-path');
@@ -51,30 +52,20 @@ class AreaSegmentationUI {
         this.areaTypes = document.getElementById('area-types');
         this.totalAreaSize = document.getElementById('total-area-size');
 
-        // Frame visualization elements
-        this.frameImage = document.getElementById('frame-image');
-        this.segmentationOverlay = document.getElementById('segmentation-overlay');
-        this.showOriginalBtn = document.getElementById('show-original');
-        this.showSegmentedBtn = document.getElementById('show-segmented');
+        // Frame visualization elements (removed in unified design)
+        // this.frameImage = document.getElementById('frame-image');
+        // this.segmentationOverlay = document.getElementById('segmentation-overlay');
+        // this.showOriginalBtn = document.getElementById('show-original');
+        // this.showSegmentedBtn = document.getElementById('show-segmented');
 
-        // Areas grid elements
-        this.areasGrid = document.getElementById('areas-grid');
+        // Segmented images elements
+        this.segmentedImagesContainer = document.getElementById('segmented-images-container');
         this.filterAreaType = document.getElementById('filter-area-type');
         this.filterVerification = document.getElementById('filter-verification');
+        this.viewMode = document.getElementById('view-mode');
         this.verifyAllBtn = document.getElementById('verify-all');
 
-        // Modal elements
-        this.modal = document.getElementById('verification-modal');
-        this.modalTitle = document.getElementById('modal-title');
-        this.modalAreaType = document.getElementById('modal-area-type');
-        this.modalConfidence = document.getElementById('modal-confidence');
-        this.modalDimensions = document.getElementById('modal-dimensions');
-        this.modalAreaSize = document.getElementById('modal-area-size');
-        this.modalAreaImage = document.getElementById('modal-area-image');
-        this.modalOverlayCanvas = document.getElementById('modal-overlay-canvas');
-        this.verifyAreaBtn = document.getElementById('verify-area');
-        this.rejectAreaBtn = document.getElementById('reject-area');
-        this.closeModalBtn = document.getElementById('close-modal');
+        // Remove modal elements as we're using inline verification now
         
         // Auto-processing notice
         this.autoProcessingNotice = document.getElementById('auto-processing-notice');
@@ -84,6 +75,7 @@ class AreaSegmentationUI {
         // Navigation
         this.backToFacesBtn.addEventListener('click', () => this.navigateToFaceRecognition());
         this.continueBtn.addEventListener('click', () => this.navigateToPermissions());
+        this.proceedBtn.addEventListener('click', () => this.navigateToPermissions());
 
         // Threshold sliders
         this.boxThresholdSlider.addEventListener('input', (e) => {
@@ -99,28 +91,19 @@ class AreaSegmentationUI {
         // Segmentation
         this.startSegmentationBtn.addEventListener('click', () => this.startSegmentation());
 
-        // Visualization controls
-        this.showOriginalBtn.addEventListener('click', () => this.showOriginalFrame());
-        this.showSegmentedBtn.addEventListener('click', () => this.showSegmentedFrame());
+        // Visualization controls (removed in unified design)
+        // this.showOriginalBtn.addEventListener('click', () => this.showOriginalFrame());
+        // this.showSegmentedBtn.addEventListener('click', () => this.showSegmentedFrame());
 
         // Verification
         this.verifyAllBtn.addEventListener('click', () => this.verifyAllAreas());
 
-        // Filters
+        // Filters and view mode
         this.filterAreaType.addEventListener('change', () => this.applyFilters());
         this.filterVerification.addEventListener('change', () => this.applyFilters());
+        this.viewMode.addEventListener('change', () => this.displaySegmentedImages());
 
-        // Modal
-        this.closeModalBtn.addEventListener('click', () => this.closeModal());
-        this.verifyAreaBtn.addEventListener('click', () => this.verifyCurrentArea(true));
-        this.rejectAreaBtn.addEventListener('click', () => this.verifyCurrentArea(false));
-
-        // Close modal on outside click
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.closeModal();
-            }
-        });
+        // Remove modal event listeners as we're using inline verification
     }
 
     loadDataFromUrl() {
@@ -128,6 +111,7 @@ class AreaSegmentationUI {
         this.currentVideoPath = urlParams.get('video_path');
         this.currentUserId = urlParams.get('user_id');
         const facesCount = urlParams.get('faces_count') || '0';
+        const autoStart = urlParams.get('auto_start') === 'true';
 
         if (this.currentVideoPath) {
             this.currentVideoPathElement.textContent = this.currentVideoPath;
@@ -144,12 +128,27 @@ class AreaSegmentationUI {
             this.serviceUrlInput.value = serviceUrl;
         }
 
-        // Auto-start segmentation if coming from face recognition
-        if (this.currentUserId && facesCount && parseInt(facesCount) > 0) {
-            // Delay to allow UI to initialize
+        // Debug logging to help troubleshoot
+        console.log('URL Parameters:', {
+            autoStart,
+            currentUserId: this.currentUserId,
+            facesCount,
+            facesCountInt: parseInt(facesCount)
+        });
+
+        // Auto-start segmentation if coming from face recognition with auto_start flag
+        if (autoStart && this.currentUserId && facesCount && parseInt(facesCount) > 0) {
+            console.log('Auto-starting segmentation...');
+            // Hide setup section immediately and show loading
+            this.setupSection.classList.add('hidden');
+            this.setLoadingState(true);
+            
+            // Start segmentation immediately
             setTimeout(() => {
                 this.autoStartSegmentation();
-            }, 1000);
+            }, 500);
+        } else {
+            console.log('Not auto-starting. Showing setup section.');
         }
     }
 
@@ -331,48 +330,13 @@ class AreaSegmentationUI {
         // Update summary
         this.updateSummary();
 
-        // Display frame - handle different image sources
-        if (isFromExtractedFrames && this.segmentationData.frame_details && this.segmentationData.frame_details.length > 0) {
-            // Use the first frame that has a visualization
-            const frameWithViz = this.segmentationData.frame_details.find(f => f.visualization_url);
-            if (frameWithViz && frameWithViz.visualization_url) {
-                this.frameImage.src = frameWithViz.visualization_url;
-            } else {
-                // Fallback to first available frame
-                const firstFrame = this.areasData.find(area => area.source_frame_path);
-                if (firstFrame && firstFrame.source_frame_path) {
-                    this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${firstFrame.source_frame_path.split('/').pop()}`;
-                }
-            }
-        } else if (imagePath) {
-            // Single image segmentation - check if it's already a full URL path
-            if (imagePath.startsWith('/static/')) {
-                this.frameImage.src = imagePath;
-            } else {
-                this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${imagePath.split('/').pop()}`;
-            }
-        } else if (this.segmentationData.image_path) {
-            // Use image_path from segmentation response (could be visualization)
-            console.log('Using image_path from response:', this.segmentationData.image_path);
-            this.frameImage.src = this.segmentationData.image_path;
-        } else {
-            // Try to use visualization URL from segmentation data
-            if (this.segmentationData.visualization_url) {
-                console.log('Using visualization URL:', this.segmentationData.visualization_url);
-                this.frameImage.src = this.segmentationData.visualization_url;
-            } else {
-                console.log('No visualization URL found in segmentation data:', this.segmentationData);
-            }
-        }
+        // Display segmented images instead of single frame
+        this.displaySegmentedImages();
 
-        // Image will display directly without overlays
-
-        // Display areas grid
-        this.displayAreasGrid();
-
-        // Enable continue button if areas are detected
+        // Enable continue/proceed buttons if areas are detected
         if (this.areasData.length > 0) {
             this.continueBtn.disabled = false;
+            this.proceedBtn.disabled = false;
         }
     }
 
@@ -468,76 +432,271 @@ class AreaSegmentationUI {
         });
     }
 
-    displayAreasGrid() {
-        this.areasGrid.innerHTML = '';
+    displaySegmentedImages() {
+        this.segmentedImagesContainer.innerHTML = '';
 
         const filteredAreas = this.getFilteredAreas();
+        const viewMode = this.viewMode.value;
 
-        filteredAreas.forEach((area, index) => {
-            const areaCard = this.createAreaCard(area, index);
-            this.areasGrid.appendChild(areaCard);
-        });
+        if (viewMode === 'grid') {
+            this.displayGridView(filteredAreas);
+        } else {
+            this.displayListView(filteredAreas);
+        }
     }
 
-    createAreaCard(area, index) {
+    displayGridView(areas) {
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6';
+
+        areas.forEach((area, index) => {
+            const imageCard = this.createSegmentedImageCard(area, index);
+            gridContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(gridContainer);
+    }
+
+    displayListView(areas) {
+        const listContainer = document.createElement('div');
+        listContainer.className = 'space-y-4';
+
+        areas.forEach((area, index) => {
+            const imageCard = this.createSegmentedImageCard(area, index, true);
+            listContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(listContainer);
+    }
+
+    createSegmentedImageCard(area, index, isListView = false) {
         const colors = [
-            'border-red-200 bg-red-50', 'border-orange-200 bg-orange-50', 
-            'border-yellow-200 bg-yellow-50', 'border-green-200 bg-green-50',
-            'border-cyan-200 bg-cyan-50', 'border-blue-200 bg-blue-50', 
-            'border-purple-200 bg-purple-50', 'border-pink-200 bg-pink-50'
+            'border-red-300', 'border-orange-300', 'border-yellow-300', 'border-green-300',
+            'border-cyan-300', 'border-blue-300', 'border-purple-300', 'border-pink-300'
         ];
 
         const isVerified = this.verifiedAreas.has(area.area_id);
-        const cardColor = colors[index % colors.length];
-
+        const borderColor = colors[index % colors.length];
+        
         const card = document.createElement('div');
-        card.className = `area-card border-2 ${cardColor} rounded-lg p-4 cursor-pointer transition-all ${isVerified ? 'ring-2 ring-green-500' : ''}`;
+        const cardClasses = isListView 
+            ? `segmented-image-card flex bg-white border-2 ${borderColor} rounded-lg overflow-hidden ${isVerified ? 'ring-2 ring-green-500' : ''}` 
+            : `segmented-image-card bg-white border-2 ${borderColor} rounded-lg overflow-hidden ${isVerified ? 'ring-2 ring-green-500' : ''}`;
+        
+        card.className = cardClasses;
         
         const areaType = area.area_type || area.label || 'unknown';
         const confidence = area.confidence || 0;
         
-        card.innerHTML = `
-            <div class="flex justify-between items-start mb-3">
-                <div class="flex-1">
-                    <h3 class="font-medium text-gray-900 capitalize mb-1">${areaType.replace('_', ' ')}</h3>
-                    <p class="text-sm text-gray-600">Confidence: ${(confidence * 100).toFixed(1)}%</p>
+        // Get image source - prefer visualization if available
+        let imageSrc = this.getImageSourceForArea(area);
+        
+        if (isListView) {
+            card.innerHTML = `
+                <div class="w-48 h-32 flex-shrink-0 relative">
+                    <img src="${imageSrc}" alt="${areaType} segment" class="w-full h-full object-cover">
+                    <canvas class="absolute inset-0 w-full h-full pointer-events-none" data-area-id="${area.area_id}"></canvas>
+                    ${isVerified ? '<div class="verification-badge bg-green-500 text-white">✓ Verified</div>' : '<div class="verification-badge bg-gray-500 text-white">Unverified</div>'}
                 </div>
-                ${isVerified ? '<div class="text-green-600"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg></div>' : ''}
-            </div>
+                <div class="flex-1 p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-lg font-semibold text-gray-900 capitalize">${areaType.replace('_', ' ')}</h3>
+                        <span class="text-sm text-gray-500">${(confidence * 100).toFixed(1)}% confidence</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                        <div><span class="font-medium">Type:</span> ${areaType}</div>
+                        <div><span class="font-medium">Source:</span> ${area.source_frame || 'N/A'}</div>
+                        <div><span class="font-medium">Detection:</span> ${area.source || 'Replicate'}</div>
+                        <div><span class="font-medium">Area ID:</span> ${area.area_id}</div>
+                    </div>
+                    
+                    <div class="inline-verification">
+                        ${!isVerified ? `
+                            <button class="verify-btn bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                                ✓ Verify
+                            </button>
+                            <button class="reject-btn bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                                ✗ Reject
+                            </button>
+                        ` : `
+                            <div class="flex items-center text-green-600">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-medium">Verified</span>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        } else {
+            card.innerHTML = `
+                <div class="relative">
+                    <img src="${imageSrc}" alt="${areaType} segment" class="w-full h-48 object-cover">
+                    <canvas class="absolute inset-0 w-full h-full pointer-events-none" data-area-id="${area.area_id}"></canvas>
+                    ${isVerified ? '<div class="verification-badge bg-green-500 text-white">✓ Verified</div>' : '<div class="verification-badge bg-gray-500 text-white">Unverified</div>'}
+                </div>
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-semibold text-gray-900 capitalize">${areaType.replace('_', ' ')}</h3>
+                        <span class="text-xs text-gray-500">${(confidence * 100).toFixed(1)}%</span>
+                    </div>
+                    
+                    <div class="text-xs text-gray-600 mb-3">
+                        <div>Source: ${area.source_frame || 'N/A'}</div>
+                        <div>ID: ${area.area_id}</div>
+                    </div>
+                    
+                    <div class="inline-verification">
+                        ${!isVerified ? `
+                            <button class="verify-btn bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                                ✓ Verify
+                            </button>
+                            <button class="reject-btn bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                                ✗ Reject
+                            </button>
+                        ` : `
+                            <div class="flex items-center text-green-600 text-sm">
+                                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span>Verified</span>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add event listeners for verification buttons
+        if (!isVerified) {
+            const verifyBtn = card.querySelector('.verify-btn');
+            const rejectBtn = card.querySelector('.reject-btn');
             
-            <div class="space-y-1 text-sm text-gray-600">
-                <div>Type: ${areaType}</div>
-                <div>Source: ${area.source_frame || 'N/A'}</div>
-                <div>Detection: ${area.source || 'N/A'}</div>
-            </div>
-            
-            <div class="mt-4 flex space-x-2">
-                <button class="verify-btn flex-1 text-xs px-3 py-2 rounded ${isVerified ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors">
-                    ${isVerified ? '✓ Verified' : 'Verify'}
-                </button>
-                <button class="details-btn text-xs px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
-                    Details
-                </button>
-            </div>
-        `;
-
-        // Add event listeners
-        const verifyBtn = card.querySelector('.verify-btn');
-        const detailsBtn = card.querySelector('.details-btn');
-
-        verifyBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!isVerified) {
-                this.openVerificationModal(area);
+            if (verifyBtn) {
+                verifyBtn.addEventListener('click', () => this.verifyArea(area.area_id, true));
             }
-        });
-
-        detailsBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.openVerificationModal(area);
-        });
-
+            
+            if (rejectBtn) {
+                rejectBtn.addEventListener('click', () => this.verifyArea(area.area_id, false));
+            }
+        }
+        
+        // Draw segmentation overlay on the canvas after the image loads
+        const img = card.querySelector('img');
+        const canvas = card.querySelector('canvas');
+        
+        if (img && canvas) {
+            img.onload = () => {
+                this.drawSegmentOverlayOnCard(canvas, area, img);
+            };
+        }
+        
         return card;
+    }
+
+    getImageSourceForArea(area) {
+        // Try to get the best image source for this area
+        
+        // If we have frame details with visualization URLs, use that
+        if (this.segmentationData.frame_details) {
+            const frameDetail = this.segmentationData.frame_details.find(f => 
+                f.frame_file === area.source_frame && f.visualization_url
+            );
+            if (frameDetail && frameDetail.visualization_url) {
+                return frameDetail.visualization_url;
+            }
+        }
+        
+        // If we have a visualization URL in segmentation data, use that
+        if (this.segmentationData.visualization_url) {
+            return this.segmentationData.visualization_url;
+        }
+        
+        // If we have source frame path, construct the URL
+        if (area.source_frame_path) {
+            return `${this.apiBaseUrl}/static/extracted_frames/${area.source_frame_path.split('/').pop()}`;
+        }
+        
+        // If we have source frame name, construct the URL
+        if (area.source_frame) {
+            return `${this.apiBaseUrl}/static/extracted_frames/${area.source_frame}`;
+        }
+        
+        // Fallback to image path from segmentation data
+        if (this.segmentationData.image_path) {
+            return this.segmentationData.image_path;
+        }
+        
+        // Last resort - empty image
+        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg==';
+    }
+
+    drawSegmentOverlayOnCard(canvas, area, img) {
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size to match image
+        canvas.width = img.clientWidth;
+        canvas.height = img.clientHeight;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Calculate scale factors
+        const scaleX = canvas.width / img.naturalWidth;
+        const scaleY = canvas.height / img.naturalHeight;
+        
+        // Set drawing style
+        ctx.strokeStyle = '#ef4444';
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.lineWidth = 2;
+        
+        // Draw segmentation area
+        if (area.bbox) {
+            // Draw bounding box
+            const x1 = area.bbox.x1 * scaleX;
+            const y1 = area.bbox.y1 * scaleY;
+            const x2 = area.bbox.x2 * scaleX;
+            const y2 = area.bbox.y2 * scaleY;
+            
+            ctx.beginPath();
+            ctx.rect(x1, y1, x2 - x1, y2 - y1);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Add label
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
+            
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+        } else if (area.polygon && area.polygon.length > 0) {
+            // Draw polygon
+            ctx.beginPath();
+            area.polygon.forEach((point, i) => {
+                const x = point[0] * scaleX;
+                const y = point[1] * scaleY;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Add label
+            const centerX = area.polygon.reduce((sum, p) => sum + p[0], 0) / area.polygon.length * scaleX;
+            const centerY = area.polygon.reduce((sum, p) => sum + p[1], 0) / area.polygon.length * scaleY;
+            
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+        }
     }
 
     getFilteredAreas() {
@@ -564,87 +723,10 @@ class AreaSegmentationUI {
     }
 
     applyFilters() {
-        this.displayAreasGrid();
+        this.displaySegmentedImages();
     }
 
-    openVerificationModal(area) {
-        this.currentAreaForVerification = area;
-        
-        const areaType = area.area_type || area.label || 'unknown';
-        const confidence = area.confidence || 0;
-        
-        this.modalAreaType.textContent = areaType.replace('_', ' ');
-        this.modalConfidence.textContent = (confidence * 100).toFixed(1) + '%';
-        this.modalDimensions.textContent = area.bbox ? 
-            `${area.bbox.x2 - area.bbox.x1}px × ${area.bbox.y2 - area.bbox.y1}px` : 
-            `${area.dimensions?.width?.toFixed(1) || 'N/A'}m × ${area.dimensions?.height?.toFixed(1) || 'N/A'}m`;
-        this.modalAreaSize.textContent = area.dimensions?.area?.toFixed(1) + 'm²' || 'N/A';
-        
-        // Set the same frame image
-        this.modalAreaImage.src = this.frameImage.src;
-        this.modalAreaImage.onload = () => {
-            this.drawModalOverlay(area);
-        };
-
-        this.modal.classList.remove('hidden');
-    }
-
-    drawModalOverlay(area) {
-        const canvas = this.modalOverlayCanvas;
-        const ctx = canvas.getContext('2d');
-        const img = this.modalAreaImage;
-
-        canvas.width = img.clientWidth;
-        canvas.height = img.clientHeight;
-        canvas.style.width = img.clientWidth + 'px';
-        canvas.style.height = img.clientHeight + 'px';
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const scaleX = canvas.width / img.naturalWidth;
-        const scaleY = canvas.height / img.naturalHeight;
-
-        ctx.strokeStyle = '#ef4444';
-        ctx.fillStyle = '#ef444440';
-        ctx.lineWidth = 3;
-
-        if (area.bbox) {
-            // Draw bounding box for Replicate API results
-            const x1 = area.bbox.x1 * scaleX;
-            const y1 = area.bbox.y1 * scaleY;
-            const x2 = area.bbox.x2 * scaleX;
-            const y2 = area.bbox.y2 * scaleY;
-
-            ctx.beginPath();
-            ctx.rect(x1, y1, x2 - x1, y2 - y1);
-            ctx.fill();
-            ctx.stroke();
-        } else if (area.polygon && area.polygon.length > 0) {
-            // Draw polygon for other API results
-            ctx.beginPath();
-            area.polygon.forEach((point, i) => {
-                const x = point[0] * scaleX;
-                const y = point[1] * scaleY;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-    }
-
-    closeModal() {
-        this.modal.classList.add('hidden');
-        this.currentAreaForVerification = null;
-    }
-
-    async verifyCurrentArea(approved) {
-        if (!this.currentAreaForVerification) return;
-
+    async verifyArea(areaId, approved) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/segmentation/segment/verify`, {
                 method: 'POST',
@@ -652,7 +734,7 @@ class AreaSegmentationUI {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    area_id: this.currentAreaForVerification.area_id,
+                    area_id: areaId,
                     user_id: this.currentUserId,
                     approved: approved
                 })
@@ -665,21 +747,32 @@ class AreaSegmentationUI {
             const result = await response.json();
 
             if (approved) {
-                this.verifiedAreas.add(this.currentAreaForVerification.area_id);
+                this.verifiedAreas.add(areaId);
             } else {
                 // Remove from areas data if rejected
-                this.areasData = this.areasData.filter(area => area.area_id !== this.currentAreaForVerification.area_id);
+                this.areasData = this.areasData.filter(area => area.area_id !== areaId);
             }
 
             this.updateSummary();
-            this.displayAreasGrid();
-            this.closeModal();
+            this.displaySegmentedImages();
+            
+            // Update proceed button state
+            this.updateProceedButtonState();
 
         } catch (error) {
             console.error('Verification error:', error);
             this.showError(error.message);
         }
     }
+    
+    updateProceedButtonState() {
+        const hasVerifiedAreas = this.verifiedAreas.size > 0;
+        this.proceedBtn.disabled = !hasVerifiedAreas;
+        this.continueBtn.disabled = !hasVerifiedAreas;
+    }
+
+
+
 
     async verifyAllAreas() {
         const unverifiedAreas = this.areasData.filter(area => !this.verifiedAreas.has(area.area_id));
@@ -705,7 +798,10 @@ class AreaSegmentationUI {
         }
 
         this.updateSummary();
-        this.displayAreasGrid();
+        this.displaySegmentedImages();
+        
+        // Update proceed button state
+        this.updateProceedButtonState();
     }
 
     showOriginalFrame() {
