@@ -116,7 +116,7 @@ class AccessPermissionsUI {
             await this.checkServiceConnection();
             await this.loadLabeledPeople();
             await this.loadVerifiedAreas();
-            await this.loadExistingPermissions();
+            // REMOVED: loadExistingPermissions() - start with empty permissions for better performance
             
             this.displayInterface();
             this.updateSummary();
@@ -186,29 +186,37 @@ class AccessPermissionsUI {
         }
     }
 
-    async loadExistingPermissions() {
-        this.permissions.clear();
-        
-        for (const person of this.labeledPeople) {
-            try {
-                const response = await fetch(`${this.apiBaseUrl}/segmentation/permissions/person/${encodeURIComponent(person)}/user/${this.currentUserId}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    const personPermissions = new Map();
-                    
-                    for (const perm of data.permissions || []) {
-                        personPermissions.set(perm.area_id, {
-                            allowed: perm.allowed,
-                            conditions: perm.conditions || []
-                        });
-                    }
-                    
-                    this.permissions.set(person, personPermissions);
+    async loadPersonPermissions(person) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/permissions/person/${encodeURIComponent(person)}/user/${this.currentUserId}`);
+            if (response.ok) {
+                const data = await response.json();
+                const personPermissions = new Map();
+                
+                for (const perm of data.permissions || []) {
+                    personPermissions.set(perm.area_id, {
+                        allowed: perm.allowed,
+                        conditions: perm.conditions || []
+                    });
                 }
-            } catch (error) {
-                console.error(`Error loading permissions for ${person}:`, error);
+                
+                this.permissions.set(person, personPermissions);
+            } else {
+                // If no existing permissions found, initialize with empty permissions
+                this.permissions.set(person, new Map());
             }
+        } catch (error) {
+            console.error(`Error loading permissions for ${person}:`, error);
+            // Initialize with empty permissions on error
+            this.permissions.set(person, new Map());
         }
+    }
+
+    // Legacy method - now simplified for batch operations if needed
+    async loadExistingPermissions() {
+        // This method is now only used for batch operations if needed
+        // Individual permissions are loaded per person via loadPersonPermissions
+        console.log('Batch permission loading - use loadPersonPermissions for better performance');
     }
 
     displayInterface() {
@@ -229,20 +237,16 @@ class AccessPermissionsUI {
         const card = document.createElement('div');
         card.className = `person-card p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-brand-blue hover:bg-gray-50 transition-all`;
         
-        const personPermissions = this.permissions.get(person) || new Map();
-        const totalPermissions = personPermissions.size;
-        const allowedPermissions = Array.from(personPermissions.values()).filter(p => p.allowed).length;
-        
         card.innerHTML = `
             <div class="text-center">
                 <div class="w-16 h-16 bg-brand-purple rounded-full flex items-center justify-center mx-auto mb-3">
                     <span class="text-white text-2xl font-bold">${person.charAt(0).toUpperCase()}</span>
                 </div>
                 <h3 class="font-medium text-gray-900 mb-1">${person}</h3>
-                <p class="text-sm text-gray-600">${allowedPermissions}/${this.verifiedAreas.length} areas</p>
+                <p class="text-sm text-gray-600">Click to define permissions</p>
                 <div class="mt-2">
                     <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-brand-blue h-2 rounded-full" style="width: ${this.verifiedAreas.length > 0 ? (allowedPermissions / this.verifiedAreas.length) * 100 : 0}%"></div>
+                        <div class="bg-gray-400 h-2 rounded-full w-0"></div>
                     </div>
                 </div>
             </div>
@@ -252,7 +256,7 @@ class AccessPermissionsUI {
         return card;
     }
 
-    selectPerson(person, cardElement) {
+    async selectPerson(person, cardElement) {
         // Update UI selection
         document.querySelectorAll('.person-card').forEach(card => {
             card.classList.remove('selected');
@@ -263,6 +267,8 @@ class AccessPermissionsUI {
         this.selectedPersonName.textContent = person;
         this.permissionsConfig.classList.remove('hidden');
 
+        // Load permissions for this specific person only when selected
+        await this.loadPersonPermissions(person);
         this.displayPersonPermissions();
     }
 
@@ -355,7 +361,7 @@ class AccessPermissionsUI {
 
         try {
             await this.setPermission(this.selectedPerson, areaId, allowed, []);
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -371,7 +377,7 @@ class AccessPermissionsUI {
 
         try {
             await this.setPermission(this.selectedPerson, 'all', allowed, []);
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -410,7 +416,7 @@ class AccessPermissionsUI {
 
         try {
             await this.setPermission(this.selectedPerson, 'all', true, []);
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -435,7 +441,7 @@ class AccessPermissionsUI {
                 }
             }
 
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -508,7 +514,7 @@ class AccessPermissionsUI {
 
         try {
             await this.setPermission(this.selectedPerson, this.currentModalArea.area_id, allowed, conditions);
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
             this.closeModal();
@@ -540,7 +546,7 @@ class AccessPermissionsUI {
                 }
             }
 
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -565,7 +571,7 @@ class AccessPermissionsUI {
                 }
             }
 
-            await this.loadExistingPermissions();
+            await this.loadPersonPermissions(this.selectedPerson);
             this.displayPersonPermissions();
             this.updateSummary();
         } catch (error) {
@@ -578,20 +584,17 @@ class AccessPermissionsUI {
         this.totalPeopleElement.textContent = this.labeledPeople.length;
         this.totalAreasElement.textContent = this.verifiedAreas.length;
 
-        // Count total permissions
-        let totalPermissions = 0;
-        this.permissions.forEach(personPermissions => {
-            totalPermissions += personPermissions.size;
-        });
-        this.totalPermissionsElement.textContent = totalPermissions;
+        // Count permissions for currently selected person only (for better performance)
+        const selectedPersonPermissions = this.selectedPerson ? 
+            (this.permissions.get(this.selectedPerson)?.size || 0) : 0;
+        this.totalPermissionsElement.textContent = selectedPersonPermissions;
 
-        // Calculate completion rate
-        const expectedPermissions = this.labeledPeople.length * this.verifiedAreas.length;
-        const completionRate = expectedPermissions > 0 ? Math.round((totalPermissions / expectedPermissions) * 100) : 0;
-        this.completionRateElement.textContent = completionRate + '%';
+        // Simplified completion - show "Ready" when we have people and areas
+        const isReadyToDefinePermissions = this.labeledPeople.length > 0 && this.verifiedAreas.length > 0;
+        this.completionRateElement.textContent = isReadyToDefinePermissions ? 'Ready' : '0%';
 
-        // Enable finish button if at least some permissions are set
-        this.finishSetupBtn.disabled = totalPermissions === 0;
+        // Enable finish button when we have basic setup (people and areas)
+        this.finishSetupBtn.disabled = !isReadyToDefinePermissions;
     }
 
     showError(message) {
