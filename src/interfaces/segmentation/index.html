@@ -221,29 +221,6 @@
 
         <!-- Results Section -->
         <div id="results-section" class="hidden">
-            <!-- Segmentation Summary -->
-            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-                <h2 class="text-lg font-medium text-gray-900 mb-6">Segmentation Results</h2>
-                <div id="segmentation-summary" class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-brand-purple" id="total-areas">0</div>
-                        <div class="text-sm text-gray-600">Areas Detected</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-green-600" id="verified-areas">0</div>
-                        <div class="text-sm text-gray-600">Areas Verified</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-orange-600" id="area-types">0</div>
-                        <div class="text-sm text-gray-600">Area Types</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-blue-600" id="total-area-size">0</div>
-                        <div class="text-sm text-gray-600">Total Area (m²)</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Unified Segmented Images View -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
                 <div class="flex justify-between items-center mb-6">
@@ -323,6 +300,51 @@
         </div>
     </main>
 
+    <!-- Expanded Image Modal -->
+    <div id="image-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="relative bg-white rounded-lg max-w-4xl max-h-[90vh] w-full mx-4 overflow-auto">
+            <!-- Close Button -->
+            <button id="modal-close" class="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            
+            <!-- Modal Content -->
+            <div class="p-6">
+                <!-- Image -->
+                <div class="mb-6">
+                    <img id="modal-image" src="" alt="Expanded frame view" class="w-full h-auto rounded-lg shadow-lg">
+                </div>
+                
+                <!-- Frame Details -->
+                <div class="mb-6">
+                    <h3 id="modal-frame-name" class="text-xl font-semibold text-gray-900 mb-2"></h3>
+                    <p id="modal-segments-count" class="text-gray-600 mb-4"></p>
+                    <div id="modal-verification-status" class="hidden mb-4">
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"></span>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div id="modal-buttons" class="flex space-x-4 justify-center">
+                    <button id="modal-approve" class="flex-1 max-w-xs bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg text-lg font-medium transition-colors">
+                        ✓ Approve Frame
+                    </button>
+                    <button id="modal-reject" class="flex-1 max-w-xs bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg text-lg font-medium transition-colors">
+                        ✗ Reject Frame
+                    </button>
+                </div>
+                
+                <!-- Change Decision Button (shown when already verified) -->
+                <div id="modal-change-button" class="hidden flex justify-center">
+                    <button id="modal-change" class="max-w-xs bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg text-lg font-medium transition-colors">
+                        Change Decision
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

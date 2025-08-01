@@ -347,3 +347,34 @@ class PersistentStorage:
                 except OSError:
                     pass
         return total_size
+    
+    # Frame Status Storage Methods
+    def save_frame_status(self, user_id: str, frame_status_data: Dict[str, Any]) -> str:
+        """Save frame processing status for streaming segmentation"""
+        user_seg_dir = os.path.join(self.segmentation_path, user_id)
+        os.makedirs(user_seg_dir, exist_ok=True)
+        
+        status_file = os.path.join(user_seg_dir, "frame_status.json")
+        
+        # Add timestamp
+        frame_status_data["last_updated"] = datetime.now().isoformat()
+        
+        with open(status_file, 'w') as f:
+            json.dump(frame_status_data, f, indent=2)
+        
+        logger.info(f"Saved frame status for user {user_id}")
+        return status_file
+    
+    def load_frame_status(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Load frame processing status for a user"""
+        status_file = os.path.join(self.segmentation_path, user_id, "frame_status.json")
+        
+        if not os.path.exists(status_file):
+            return None
+        
+        try:
+            with open(status_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.error(f"Error loading frame status for user {user_id}: {e}")
+            return None

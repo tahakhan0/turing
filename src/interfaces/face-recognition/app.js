@@ -11,6 +11,7 @@ class FaceRecognitionUI {
         
         this.initializeElements();
         this.attachEventListeners();
+        this.loadDataFromUrl();
         this.checkServiceConnection();
     }
 
@@ -129,6 +130,39 @@ class FaceRecognitionUI {
                 this.confirmFace();
             }
         });
+    }
+
+    loadDataFromUrl() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoPath = urlParams.get('video_path');
+        const userId = urlParams.get('user_id');
+        const serviceUrl = urlParams.get('service_url');
+        const autoStart = urlParams.get('auto_start') === 'true';
+        
+        if (serviceUrl) {
+            this.apiBaseUrl = serviceUrl;
+            this.serviceUrlInput.value = serviceUrl;
+        }
+        
+        if (videoPath) {
+            this.videoPathInput.value = videoPath;
+            // Set to recognition mode if we have URL parameters
+            this.recognitionOption.checked = true;
+            this.toggleAnalysisType();
+        }
+        
+        if (userId) {
+            // Store user ID in localStorage for consistency
+            localStorage.setItem('current_user_id', userId);
+        }
+        
+        // Auto-start analysis if requested and we have the required data
+        if (autoStart && (videoPath || userId)) {
+            // Add a small delay to ensure UI is fully initialized
+            setTimeout(() => {
+                this.analyzeVideo();
+            }, 500);
+        }
     }
 
     async checkServiceConnection() {

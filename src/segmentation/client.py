@@ -200,7 +200,9 @@ class ReplicateSegmentationClient:
                           query: str = SEGMENT_QUERY,
                           box_threshold: float = 0.25,
                           text_threshold: float = 0.25,
-                          show_visualisation: bool = True) -> Dict[str, Any]:
+                          show_visualisation: bool = True,
+                          websocket_callback=None,
+                          frame_name: str = None) -> Dict[str, Any]:
         """
         Complete workflow: segment image and process results
         
@@ -211,11 +213,38 @@ class ReplicateSegmentationClient:
             box_threshold: Detection confidence threshold
             text_threshold: Text matching threshold
             show_visualisation: Whether to generate visualization image
+            websocket_callback: Optional async callback for WebSocket notifications
+            frame_name: Optional frame name for tracking
             
         Returns:
             Processed segmentation results
         """
         try:
+            # Send frame started notification
+            if websocket_callback and frame_name:
+                try:
+                    import asyncio
+                    # Create and run the coroutine in the event loop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're in an async context, create a task
+                        asyncio.create_task(websocket_callback({
+                            "type": "frame_started",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "timestamp": time.time()
+                        }))
+                    else:
+                        # If no event loop is running, run it synchronously
+                        loop.run_until_complete(websocket_callback({
+                            "type": "frame_started",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "timestamp": time.time()
+                        }))
+                except Exception as e:
+                    logger.error(f"Error sending frame_started notification: {e}")
+            
             # Call segmentation API
             api_response = self.segment_image(
                 image_path=image_path,
@@ -226,10 +255,68 @@ class ReplicateSegmentationClient:
             
             # Process the results
             processed_results = self.process_detections(api_response, user_id)
+            
+            # Send frame completed notification
+            if websocket_callback and frame_name:
+                try:
+                    import asyncio
+                    # Create and run the coroutine in the event loop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're in an async context, create a task
+                        asyncio.create_task(websocket_callback({
+                            "type": "frame_completed",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "visualization_url": processed_results.get("visualization_url"),
+                            "segments_found": len(processed_results.get("segments", [])),
+                            "timestamp": time.time()
+                        }))
+                    else:
+                        # If no event loop is running, run it synchronously
+                        loop.run_until_complete(websocket_callback({
+                            "type": "frame_completed",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "visualization_url": processed_results.get("visualization_url"),
+                            "segments_found": len(processed_results.get("segments", [])),
+                            "timestamp": time.time()
+                        }))
+                except Exception as e:
+                    logger.error(f"Error sending frame_completed notification: {e}")
+            
             return processed_results
             
         except Exception as e:
             logger.error(f"Complete segmentation workflow failed: {e}")
+            
+            # Send frame failed notification  
+            if websocket_callback and frame_name:
+                try:
+                    import asyncio
+                    # Create and run the coroutine in the event loop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're in an async context, create a task
+                        asyncio.create_task(websocket_callback({
+                            "type": "frame_failed",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "error": str(e),
+                            "timestamp": time.time()
+                        }))
+                    else:
+                        # If no event loop is running, run it synchronously
+                        loop.run_until_complete(websocket_callback({
+                            "type": "frame_failed",
+                            "frame_name": frame_name,
+                            "user_id": user_id,
+                            "error": str(e),
+                            "timestamp": time.time()
+                        }))
+                except Exception as e2:
+                    logger.error(f"Error sending frame_failed notification: {e2}")
+            
             return {
                 "status": "error",
                 "error": str(e),
