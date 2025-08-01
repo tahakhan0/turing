@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alan - Face Recognition Studio</title>
+    <title>Alan - Face Recognition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -18,21 +18,12 @@
         }
     </script>
     <style>
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
         .face-card:hover {
             transform: translateY(-2px);
             transition: transform 0.2s ease-in-out;
-        }
-        .loading-spinner {
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #635bff;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
         }
         .progress-step {
             transition: all 0.3s ease;
@@ -54,20 +45,20 @@
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
-                        <h1 class="text-2xl font-bold text-brand-blue">Alan</h1>
+                        <h1 class="text-2xl font-bold text-brand-blue">Alan AI</h1>
                         <p class="text-sm text-gray-500">Face Recognition Studio</p>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
                     <div id="connection-status" class="flex items-center space-x-2">
-                        <div class="w-2 h-2 bg-red-400 rounded-full"></div>
-                        <span class="text-sm text-gray-600">Disconnected</span>
+                        <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span class="text-sm text-gray-600">Connected</span>
                     </div>
-                    <button id="upload-btn" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors">
-                        Analyze Video
+                    <button id="back-to-onboarding" class="bg-gray-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-600 transition-colors">
+                        ← Back to Onboarding
                     </button>
-                    <button id="continue-to-segmentation" class="bg-brand-purple text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                        Continue to Areas →
+                    <button id="continue-to-segmentation" class="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Continue to Segmentation →
                     </button>
                 </div>
             </div>
@@ -79,17 +70,17 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div class="flex items-center justify-center space-x-8">
                 <div class="flex items-center">
-                    <div class="w-8 h-8 rounded-full bg-brand-blue text-white flex items-center justify-center text-sm font-medium">1</div>
+                    <div class="progress-step active w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">1</div>
                     <span class="ml-2 text-sm text-gray-900 font-medium">Face Recognition</span>
                 </div>
                 <div class="w-16 h-0.5 bg-gray-300"></div>
                 <div class="flex items-center">
-                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">2</div>
+                    <div class="progress-step w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">2</div>
                     <span class="ml-2 text-sm text-gray-500">Area Segmentation</span>
                 </div>
                 <div class="w-16 h-0.5 bg-gray-300"></div>
                 <div class="flex items-center">
-                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">3</div>
+                    <div class="progress-step w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-500">3</div>
                     <span class="ml-2 text-sm text-gray-500">Access Permissions</span>
                 </div>
             </div>
@@ -98,228 +89,83 @@
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Upload Section -->
-        <div id="upload-section" class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-            <div class="text-center mb-6">
+
+        <!-- Downloading State -->
+        <div id="downloading-state" class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+            <div class="text-center">
                 <div class="inline-flex items-center justify-center p-3 bg-brand-blue rounded-md shadow-lg mb-4">
                     <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                     </svg>
                 </div>
-                <h2 class="text-2xl font-bold text-gray-900 mb-2">AI Video Analysis</h2>
-                <p class="text-gray-600">Upload your video and let our AI detect and analyze faces</p>
-            </div>
-            
-            <!-- User Status Display -->
-            <div class="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                        </svg>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm text-green-800">
-                            <span class="font-medium">Session Active:</span> User ID <span id="current-user-id" class="font-mono">Loading...</span>
-                        </p>
-                    </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Connecting to Camera Provider</h2>
+                <p class="text-gray-600 mb-6">Downloading your latest videos. This may take a moment...</p>
+                <div class="relative w-24 h-24 mx-auto">
+                    <div class="absolute inset-0 border-4 border-gray-200 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-t-brand-blue border-transparent rounded-full animate-spin"></div>
+                    <div id="progress-text" class="absolute inset-0 flex items-center justify-center text-xl font-bold text-gray-700">0%</div>
                 </div>
-            </div>
-
-            <div class="space-y-4">
-                <!-- Analysis Type Selection -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Analysis Type</label>
-                    <div class="space-y-2">
-                        <label class="inline-flex items-center">
-                            <input type="radio" id="single-video-option" name="analysis-type" value="single" checked class="form-radio text-brand-blue">
-                            <span class="ml-2">Single Video (Detection Only)</span>
-                        </label>
-                        <label class="inline-flex items-center">
-                            <input type="radio" id="folder-option" name="analysis-type" value="folder" class="form-radio text-brand-blue">
-                            <span class="ml-2">Video Folder (Detection Only)</span>
-                        </label>
-                        <label class="inline-flex items-center">
-                            <input type="radio" id="recognition-option" name="analysis-type" value="recognition" class="form-radio text-brand-blue">
-                            <span class="ml-2">Smart Recognition (Auto-identify known faces)</span>
-                        </label>
-                    </div>
-                </div>
-                
-                <!-- Single Video Input -->
-                <div id="video-path-section">
-                    <label for="video-path" class="block text-sm font-medium text-gray-700 mb-2">Video Path</label>
-                    <input type="text" id="video-path" placeholder="/path/to/video.mp4 or https://..." class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm">
-                </div>
-                
-                <!-- Folder Input -->
-                <div id="folder-path-section" class="hidden">
-                    <label for="folder-path" class="block text-sm font-medium text-gray-700 mb-2">Folder Path</label>
-                    <input type="text" id="folder-path" placeholder="/path/to/videos/folder" class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm">
-                    <p class="mt-1 text-sm text-gray-500">Process all video files in the specified folder with duplicate detection</p>
-                </div>
-                
-                <div>
-                    <label for="service-url" class="block text-sm font-medium text-gray-700 mb-2">Service URL</label>
-                    <input type="text" id="service-url" value="http://localhost:8000" class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm">
-                </div>
-            </div>
-            
-            <div class="text-center mt-6">
-                <button id="analyze-video" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-brand-blue hover:bg-brand-purple focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                    </svg>
-                    <span id="analyze-text">Start Analysis</span>
-                    <div id="analyze-spinner" class="loading-spinner hidden ml-2"></div>
-                </button>
             </div>
         </div>
 
-        <!-- Results Section -->
-        <div id="results-section" class="hidden">
-            <!-- Analysis Summary -->
-            <div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
-                <h2 class="text-lg font-medium text-gray-900 mb-6">Analysis Results</h2>
-                <div id="analysis-summary" class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-brand-blue" id="total-frames">0</div>
-                        <div class="text-sm text-gray-600">Total Frames</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-green-600" id="analyzed-frames">0</div>
-                        <div class="text-sm text-gray-600">Analyzed Frames</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-brand-purple" id="total-faces">0</div>
-                        <div class="text-sm text-gray-600">Faces Detected</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-orange-600" id="labeled-faces">0</div>
-                        <div class="text-sm text-gray-600">Faces Labeled</div>
-                    </div>
+        <!-- Analyzing State -->
+        <div id="analyzing-state" class="bg-white rounded-lg border border-gray-200 p-6 mb-8 hidden">
+            <div class="text-center">
+                <div class="inline-flex items-center justify-center p-3 bg-brand-purple rounded-md shadow-lg mb-4">
+                    <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Analyzing Videos</h2>
+                <p class="text-gray-600 mb-6">Our AI is detecting and recognizing faces in your videos.</p>
+                <div class="relative w-24 h-24 mx-auto">
+                    <div class="absolute inset-0 border-4 border-gray-200 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-t-brand-purple border-transparent rounded-full animate-spin"></div>
+                    <div id="analysis-percentage" class="absolute inset-0 flex items-center justify-center text-xl font-bold text-gray-700">0%</div>
                 </div>
             </div>
+        </div>
 
-            <!-- Face Detection Grid -->
+        <!-- Labeling Interface -->
+        <div id="labeling-section" class="hidden">
             <div class="bg-white rounded-lg border border-gray-200 p-6">
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-lg font-medium text-gray-900">Detected Faces</h2>
-                    <button id="save-all" class="bg-brand-blue hover:bg-brand-purple text-white px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50">
-                        Save All Labels
+                    <div>
+                        <h2 class="text-lg font-medium text-gray-900">Detected Faces</h2>
+                        <p class="text-sm text-gray-500">Click on a frame to label the detected faces.</p>
+                    </div>
+                    <button id="continue-btn" class="bg-brand-blue text-white px-6 py-2 rounded-md font-medium hover:bg-brand-purple transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Continue
                     </button>
                 </div>
-                
-                <!-- Filter Controls -->
-                <div class="flex space-x-4 mb-6">
-                    <select id="filter-status" class="appearance-none px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
-                        <option value="all">All Faces</option>
-                        <option value="unlabeled">Unlabeled</option>
-                        <option value="labeled">Labeled</option>
-                    </select>
-                    <input type="text" id="search-names" placeholder="Search by name..." class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
-                </div>
-
-                <!-- Face Grid -->
                 <div id="faces-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <!-- Face cards will be dynamically inserted here -->
                 </div>
             </div>
         </div>
-
-        <!-- Loading State -->
-        <div id="loading-state" class="hidden text-center py-12">
-            <div class="loading-spinner mx-auto mb-4"></div>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">Analyzing video...</h3>
-            <p class="text-gray-600">Our AI is detecting faces in your video</p>
-        </div>
-
-        <!-- Error State -->
-        <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-md p-4">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-                <div class="ml-3">
-                    <h3 class="text-sm font-medium text-red-800">Error</h3>
-                    <p id="error-message" class="text-sm text-red-700 mt-1"></p>
-                </div>
-            </div>
-        </div>
     </main>
 
-    <!-- Face Labeling Modal -->
+    <!-- Labeling Modal -->
     <div id="labeling-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div class="mt-3">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Label</h3>
+                    <h3 id="modal-title" class="text-lg font-medium text-gray-900">Label Detections</h3>
                     <button id="close-modal" class="text-gray-400 hover:text-gray-600">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
-                
-                <!-- Face Image Display -->
                 <div class="mb-6 text-center">
-                    <img id="modal-face-image" src="" alt="Detected face" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
+                    <img id="modal-face-image" src="" alt="Detected faces in frame" class="max-w-full h-auto mx-auto rounded-lg border border-gray-200">
                     <p class="text-sm text-gray-600 mt-2">Frame: <span id="modal-frame-number"></span></p>
                 </div>
-                
-                <!-- Single Person Labeling Form -->
-                <div id="single-labeling-form" class="space-y-4">
-                    <div>
-                        <label for="person-name" class="block text-sm font-medium text-gray-700 mb-2">Person Name</label>
-                        <input type="text" id="person-name" placeholder="Enter person's name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-brand-blue focus:border-brand-blue">
-                    </div>
-                    
-                    <!-- Quick Name Suggestions -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Quick Select</label>
-                        <div id="name-suggestions" class="flex flex-wrap gap-2">
-                            <!-- Name buttons will be added dynamically -->
-                        </div>
-                    </div>
-                    
-                    <!-- Action Buttons -->
-                    <div class="flex space-x-3 pt-4">
-                        <button id="confirm-face" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            Confirm & Save
-                        </button>
-                        <button id="skip-face" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            Skip Face
-                        </button>
-                        <button id="reject-face" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            Not a Face
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Bulk Labeling Form -->
-                <div id="bulk-labeling-form" class="space-y-4 hidden">
-                    <!-- Header will be dynamically added by createConsolidatedPersonInputs -->
-                    
-                    <!-- Multiple Person Inputs -->
+                <div id="bulk-labeling-form" class="space-y-4">
                     <div id="bulk-person-inputs">
                         <!-- Person input fields will be added dynamically -->
                     </div>
-                    
-                    <!-- Quick Name Suggestions for Bulk -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Quick Select Names</label>
-                        <div id="bulk-name-suggestions" class="flex flex-wrap gap-2">
-                            <!-- Name buttons will be added dynamically -->
-                        </div>
-                    </div>
-                    
-                    <!-- Bulk Action Buttons -->
                     <div class="flex space-x-3 pt-4">
                         <button id="confirm-bulk" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                            Save All Labels
+                            Save Labels
                         </button>
                         <button id="skip-bulk" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
                             Skip Frame
@@ -330,61 +176,6 @@
         </div>
     </div>
 
-    <script>
-        // Global variable to store current user ID
-        let currentUserId = null;
-
-        // Initialize user session on page load
-        function initializeUserSession() {
-            // Get user ID from localStorage
-            currentUserId = localStorage.getItem('alan_user_id');
-            
-            if (currentUserId) {
-                // Display user ID
-                document.getElementById('current-user-id').textContent = currentUserId;
-                
-                // Store session start time
-                localStorage.setItem('alan_session_start', new Date().toISOString());
-            } else {
-                // Redirect to onboarding if no user ID found
-                window.location.href = '../onboarding/index.html';
-                return;
-            }
-        }
-
-        // Function to get current user ID for face recognition operations
-        function getCurrentUserId() {
-            return currentUserId;
-        }
-
-        // Clean up localStorage on browser close/navigate away
-        function cleanupUserSession() {
-            // Clear all Alan-related localStorage items
-            localStorage.removeItem('alan_user_id');
-            localStorage.removeItem('alan_user_data');
-            localStorage.removeItem('alan_auth_data');
-            localStorage.removeItem('alan_2fa_data');
-            localStorage.removeItem('alan_onboarding_complete');
-            localStorage.removeItem('alan_session_start');
-        }
-
-        // Set up event listeners for cleanup
-        window.addEventListener('beforeunload', cleanupUserSession);
-        window.addEventListener('pagehide', cleanupUserSession);
-        
-        // Additional cleanup for when user navigates away
-        window.addEventListener('unload', cleanupUserSession);
-
-        // Initialize session when page loads
-        document.addEventListener('DOMContentLoaded', initializeUserSession);
-
-        // Override the original user ID functionality in app.js if needed
-        // This ensures all face recognition operations use the localStorage user ID
-        window.alanUserSessionManager = {
-            getCurrentUserId: getCurrentUserId,
-            cleanupSession: cleanupUserSession
-        };
-    </script>
     <script src="app.js"></script>
 </body>
 </html>

@@ -255,12 +255,14 @@ def analyze_video_with_recognition(video_path, user_id):
         # Person detection
         person_results = yolo_model(frame)
         if person_results[0].boxes is not None:
-            person_boxes = person_results[0].boxes.xyxy.cpu().numpy().astype(int)
-            person_classes = person_results[0].boxes.cls.cpu().numpy().astype(int)
+            # Convert numpy arrays to Python native types immediately
+            person_boxes = person_results[0].boxes.xyxy.cpu().numpy()
+            person_classes = person_results[0].boxes.cls.cpu().numpy()
 
             for i, box in enumerate(person_boxes):
-                if yolo_model.names[person_classes[i]] == "person":
-                    x1, y1, x2, y2 = box
+                if yolo_model.names[int(person_classes[i])] == "person":
+                    # Convert numpy types to Python native types
+                    x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
                     person_img = frame[y1:y2, x1:x2]
 
                     # Face detection within the person bounding box
@@ -343,13 +345,19 @@ def analyze_video_with_recognition(video_path, user_id):
 
     cap.release()
     
+    # Import the conversion function from yolo_service
+    from .yolo_service import convert_numpy_to_python
+    
+    # Convert all numpy types before creating the final response
+    converted_frame_analyses = convert_numpy_to_python(frame_analyses)
+    
     return FaceRecognitionAnalysis(
         video_path=video_path,
-        total_frames=total_frames,
-        processed_frames=processed_frames,
-        recognized_faces=total_recognized,
-        unrecognized_faces=total_unrecognized,
-        detections=frame_analyses
+        total_frames=int(total_frames),
+        processed_frames=int(processed_frames),
+        recognized_faces=int(total_recognized),
+        unrecognized_faces=int(total_unrecognized),
+        detections=converted_frame_analyses
     )
 
 def detect_faces_in_frame(frame):

@@ -142,47 +142,22 @@ class AreaSegmentationUI {
 
     loadDataFromUrl() {
         const urlParams = new URLSearchParams(window.location.search);
-        this.currentVideoPath = urlParams.get('video_path');
         this.currentUserId = urlParams.get('user_id');
-        const facesCount = urlParams.get('faces_count') || '0';
+        const serviceUrl = urlParams.get('service_url');
         const autoStart = urlParams.get('auto_start') === 'true';
 
-        if (this.currentVideoPath) {
-            this.currentVideoPathElement.textContent = this.currentVideoPath;
-        }
         if (this.currentUserId) {
             this.currentUserIdElement.textContent = this.currentUserId;
         }
-        this.labeledFacesCountElement.textContent = facesCount;
 
-        // Update API base URL if provided
-        const serviceUrl = urlParams.get('service_url');
         if (serviceUrl) {
             this.apiBaseUrl = serviceUrl;
             this.serviceUrlInput.value = serviceUrl;
         }
 
-        // Debug logging to help troubleshoot
-        console.log('URL Parameters:', {
-            autoStart,
-            currentUserId: this.currentUserId,
-            facesCount,
-            facesCountInt: parseInt(facesCount)
-        });
-
-        // Auto-start segmentation if coming from face recognition with auto_start flag
-        if (autoStart && this.currentUserId && facesCount && parseInt(facesCount) > 0) {
-            console.log('Auto-starting segmentation...');
-            // Hide setup section immediately and show loading
+        if (autoStart && this.currentUserId) {
             this.setupSection.classList.add('hidden');
-            this.setLoadingState(true);
-            
-            // Start segmentation immediately with minimal delay
-            setTimeout(() => {
-                this.autoStartSegmentation();
-            }, 100);
-        } else {
-            console.log('Not auto-starting. Showing setup section.');
+            this.startSegmentation();
         }
     }
 
@@ -511,7 +486,7 @@ class AreaSegmentationUI {
 
     displayCompletedFrames(frames) {
         // Show results section and hide setup when we have any completed frames
-        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.web_visualization_path);
+        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.visualization_url);
         
         if (completedFrames.length > 0) {
             this.setupSection.classList.add('hidden');
@@ -533,7 +508,7 @@ class AreaSegmentationUI {
         }
 
         // Group frames by status
-        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.web_visualization_path);
+        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.visualization_url);
         const processingFrames = frames.filter(frame => frame.status === 'processing');
         const pendingFrames = frames.filter(frame => frame.status === 'pending');
 
@@ -617,7 +592,7 @@ class AreaSegmentationUI {
 
         card.innerHTML = `
             <div class="relative">
-                <img src="${this.apiBaseUrl}${frame.web_visualization_path}" alt="Segmented frame" class="w-full h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity">
+                <img src="${this.apiBaseUrl}${frame.visualization_url}" alt="Segmented frame" class="w-full h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity">
                 ${isVerified ? `
                     <div class="absolute top-2 right-2">
                         <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -728,7 +703,7 @@ class AreaSegmentationUI {
         this.currentModalFrame = frame;
         
         // Set image and details
-        this.modalImage.src = `${this.apiBaseUrl}${frame.web_visualization_path}`;
+        this.modalImage.src = `${this.apiBaseUrl}${frame.visualization_url}`;
         this.modalFrameName.textContent = frame.frame_file;
         this.modalSegmentsCount.textContent = `${frame.segments_found} segments detected`;
         

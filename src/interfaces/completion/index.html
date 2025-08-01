@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alan AI - Setup Complete!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#635bff',
+                        'brand-purple': '#7c3aed',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            background: #f0f;
+            animation: confetti-fall linear infinite;
+            z-index: 1000;
+        }
+
+        @keyframes confetti-fall {
+            to {
+                transform: translateY(100vh) rotate(360deg);
+            }
+        }
+
+        .confetti:nth-child(1) { left: 10%; animation-duration: 3s; background: #ff6b6b; }
+        .confetti:nth-child(2) { left: 20%; animation-duration: 2.5s; background: #4ecdc4; animation-delay: 0.2s; }
+        .confetti:nth-child(3) { left: 30%; animation-duration: 3.5s; background: #45b7d1; animation-delay: 0.4s; }
+        .confetti:nth-child(4) { left: 40%; animation-duration: 2.8s; background: #96ceb4; animation-delay: 0.6s; }
+        .confetti:nth-child(5) { left: 50%; animation-duration: 3.2s; background: #ffeaa7; animation-delay: 0.8s; }
+        .confetti:nth-child(6) { left: 60%; animation-duration: 2.6s; background: #fd79a8; animation-delay: 1s; }
+        .confetti:nth-child(7) { left: 70%; animation-duration: 3.4s; background: #6c5ce7; animation-delay: 1.2s; }
+        .confetti:nth-child(8) { left: 80%; animation-duration: 2.9s; background: #a29bfe; animation-delay: 1.4s; }
+        .confetti:nth-child(9) { left: 90%; animation-duration: 3.1s; background: #fd79a8; animation-delay: 1.6s; }
+        .confetti:nth-child(10) { left: 15%; animation-duration: 2.7s; background: #00b894; animation-delay: 1.8s; }
+        .confetti:nth-child(11) { left: 25%; animation-duration: 3.3s; background: #e17055; animation-delay: 2s; }
+        .confetti:nth-child(12) { left: 35%; animation-duration: 2.4s; background: #0984e3; animation-delay: 2.2s; }
+        .confetti:nth-child(13) { left: 45%; animation-duration: 3.6s; background: #00cec9; animation-delay: 2.4s; }
+        .confetti:nth-child(14) { left: 55%; animation-duration: 2.3s; background: #fdcb6e; animation-delay: 2.6s; }
+        .confetti:nth-child(15) { left: 65%; animation-duration: 3.7s; background: #e84393; animation-delay: 2.8s; }
+        .confetti:nth-child(16) { left: 75%; animation-duration: 2.1s; background: #00b894; animation-delay: 3s; }
+        .confetti:nth-child(17) { left: 85%; animation-duration: 3.8s; background: #6c5ce7; animation-delay: 3.2s; }
+        .confetti:nth-child(18) { left: 95%; animation-duration: 2.2s; background: #fd79a8; animation-delay: 3.4s; }
+
+        .celebration-animation {
+            animation: celebrate 2s ease-in-out;
+        }
+
+        @keyframes celebrate {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .bounce-in {
+            animation: bounceIn 1.5s ease-out;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .countdown {
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-brand-blue to-brand-purple min-h-screen flex items-center justify-center relative overflow-hidden">
+    <!-- Confetti -->
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+    <div class="confetti"></div>
+
+    <!-- Main Content -->
+    <div class="text-center text-white max-w-2xl mx-auto px-6 relative z-10">
+        <!-- Success Icon -->
+        <div class="celebration-animation mb-8">
+            <div class="inline-flex items-center justify-center w-32 h-32 bg-white bg-opacity-20 rounded-full mb-6 bounce-in">
+                <svg class="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Main Message -->
+        <div class="fade-in">
+            <h1 class="text-6xl font-bold mb-4">🎉 You're All Set!</h1>
+            <p class="text-2xl mb-8 text-white text-opacity-90">
+                Alan AI is now configured and ready to monitor your property
+            </p>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="fade-in bg-white bg-opacity-10 rounded-lg p-6 mb-8 backdrop-blur-sm">
+            <div class="grid grid-cols-3 gap-6">
+                <div class="text-center">
+                    <div class="text-3xl font-bold" id="people-count">0</div>
+                    <div class="text-sm text-white text-opacity-80">People Configured</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold" id="areas-count">0</div>
+                    <div class="text-sm text-white text-opacity-80">Areas Defined</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold" id="permissions-count">0</div>
+                    <div class="text-sm text-white text-opacity-80">Permissions Set</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Countdown -->
+        <div class="fade-in">
+            <p class="text-lg mb-4 text-white text-opacity-80">
+                Redirecting to monitoring dashboard in
+            </p>
+            <div class="countdown text-4xl font-bold mb-6" id="countdown">5</div>
+            <div class="text-sm text-white text-opacity-60">
+                Get ready to see Alan AI in action!
+            </div>
+        </div>
+
+        <!-- Skip Button -->
+        <div class="fade-in mt-8">
+            <button id="skip-redirect" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-6 py-3 rounded-lg font-medium transition-all backdrop-blur-sm">
+                Go to Dashboard Now →
+            </button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
