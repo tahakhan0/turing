@@ -198,7 +198,7 @@ class AreaSegmentationUI {
         this.startSegmentationBtn.classList.add('bg-green-600');
         this.startSegmentationBtn.classList.remove('bg-brand-purple');
         
-        // Start the segmentation process
+        // Start the segmentation process directly
         await this.startSegmentation();
         
         // Hide the notice after processing
@@ -216,111 +216,90 @@ class AreaSegmentationUI {
         this.setLoadingState(true);
         this.hideError();
 
+        // Start the segmentation process in the background
+        fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}`, {
+            method: 'POST'
+        }).then(response => {
+            if (!response.ok) {
+                // Handle errors that occur after the polling has started
+                response.json().then(errorData => {
+                    this.showError(errorData.detail || 'Segmentation failed');
+                    this.setLoadingState(false);
+                    clearInterval(this.pollingInterval);
+                });
+            }
+        });
+
+        // Start polling for results after a delay
+        setTimeout(() => {
+            this.pollingInterval = setInterval(() => this.pollForSegmentationResults(), 2000);
+        }, 5000);
+    }
+
+    async pollForSegmentationResults() {
         try {
-            // First, check if there are already segmented results from extracted frames
-            const existingDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
-            
-            if (existingDataResponse.ok) {
-                const existingData = await existingDataResponse.json();
-                if (existingData.segmentation_data && existingData.segmentation_data.segments && existingData.segmentation_data.segments.length > 0) {
-                    // Use existing segmentation data
-                    console.log('Found existing segmentation data, displaying results...');
-                    this.segmentationData = existingData.segmentation_data;
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/visualizations/${this.currentUserId}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.visualizations && data.visualizations.length > 0) {
+                    this.displayPartialResults(data.visualizations);
+                }
+            }
+
+            // Check if the full results are ready
+            const fullResultsResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            if (fullResultsResponse.ok) {
+                const fullData = await fullResultsResponse.json();
+                if (fullData.segmentation_data && fullData.segmentation_data.segments && fullData.segmentation_data.segments.length > 0) {
+                    clearInterval(this.pollingInterval);
+                    this.segmentationData = fullData.segmentation_data;
                     this.areasData = this.segmentationData.segments || [];
-                    
-                    // Show loading message for existing data
-                    this.segmentText.textContent = 'Loading existing segmentation results...';
-                    this.startSegmentationBtn.classList.add('bg-blue-600');
-                    this.startSegmentationBtn.classList.remove('bg-brand-purple');
-                    
-                    this.displayResults(null, true); // Show existing results
-                    return;
+                    this.displayResults(null, true);
+                    this.setLoadingState(false);
                 }
             }
-
-            // If no existing data, try to segment extracted frames
-            const segmentFramesResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}`, {
-                method: 'POST'
-            });
-
-            if (segmentFramesResponse.ok) {
-                const frameSegmentData = await segmentFramesResponse.json();
-                
-                if (frameSegmentData.status === 'success' && frameSegmentData.total_segments_found > 0) {
-                    // Load the newly created segmentation data
-                    const newDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
-                    if (newDataResponse.ok) {
-                        const newData = await newDataResponse.json();
-                        this.segmentationData = newData.segmentation_data;
-                        this.areasData = this.segmentationData.segments || [];
-                        this.displayResults(null, true);
-                        return;
-                    }
-                }
-            }
-
-            // Fallback to video/image segmentation if available
-            if (this.currentVideoPath) {
-                console.log('No extracted frames available, trying direct video segmentation');
-                
-                // Extract frame from video first
-                const frameNumber = parseInt(this.frameNumberInput.value) || 1;
-                const extractResponse = await fetch(`${this.apiBaseUrl}/face-recognition/extract-frame`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        video_path: this.currentVideoPath,
-                        frame_number: frameNumber,
-                        user_id: this.currentUserId
-                    })
-                });
-
-                if (!extractResponse.ok) {
-                    throw new Error(`Failed to extract frame: ${extractResponse.statusText}`);
-                }
-
-                const frameData = await extractResponse.json();
-                const imagePath = frameData.image_path;
-
-                // Now segment the extracted frame using Replicate
-                const segmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/replicate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        image_path: imagePath,
-                        user_id: this.currentUserId,
-                        box_threshold: parseFloat(this.boxThresholdSlider.value),
-                        text_threshold: parseFloat(this.textThresholdSlider.value)
-                    })
-                });
-
-                if (!segmentResponse.ok) {
-                    throw new Error(`Segmentation failed: ${segmentResponse.statusText}`);
-                }
-
-                this.segmentationData = await segmentResponse.json();
-                console.log('Segmentation response:', this.segmentationData);
-                
-                if (this.segmentationData.status === 'error') {
-                    throw new Error(this.segmentationData.error);
-                }
-
-                this.areasData = this.segmentationData.segments || [];
-                this.displayResults(null, false); // Pass null so it uses segmentationData.image_path
-            } else {
-                throw new Error('No video path provided and no extracted frames found. Please complete face recognition first.');
-            }
-            
         } catch (error) {
-            console.error('Segmentation error:', error);
-            this.showError(error.message);
-        } finally {
+            console.error('Polling error:', error);
+            this.showError('Failed to fetch segmentation results.');
             this.setLoadingState(false);
+            clearInterval(this.pollingInterval);
         }
+    }
+
+    displayPartialResults(visualizationUrls) {
+        this.setupSection.classList.add('hidden');
+        this.resultsSection.classList.remove('hidden');
+        this.segmentedImagesContainer.innerHTML = '';
+
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6';
+
+        visualizationUrls.forEach(url => {
+            const imageCard = this.createPartialImageCard(url);
+            gridContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(gridContainer);
+    }
+
+    createPartialImageCard(imageUrl) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-gray-300 rounded-lg overflow-hidden';
+        card.innerHTML = `
+            <div class="relative">
+                <img src="${this.apiBaseUrl}${imageUrl}" alt="Segmentation in progress" class="w-full h-48 object-cover">
+                <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <p class="text-white text-lg font-semibold">Processing...</p>
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-900 capitalize">Segmenting...</h3>
+                <div class="text-xs text-gray-600 mb-3">
+                    <p>Please wait while we analyze this image.</p>
+                </div>
+            </div>
+        `;
+        return card;
     }
 
     displayResults(imagePath, isFromExtractedFrames = false) {
@@ -614,14 +593,14 @@ class AreaSegmentationUI {
             return this.segmentationData.visualization_url;
         }
         
-        // If we have source frame path, construct the URL
+        // If we have source frame path, construct the URL with user_id
         if (area.source_frame_path) {
-            return `${this.apiBaseUrl}/static/extracted_frames/${area.source_frame_path.split('/').pop()}`;
+            return `${this.apiBaseUrl}/static/face_recognition/${this.currentUserId}/extracted_frames/${area.source_frame_path.split('/').pop()}`;
         }
         
-        // If we have source frame name, construct the URL
+        // If we have source frame name, construct the URL with user_id
         if (area.source_frame) {
-            return `${this.apiBaseUrl}/static/extracted_frames/${area.source_frame}`;
+            return `${this.apiBaseUrl}/static/face_recognition/${this.currentUserId}/extracted_frames/${area.source_frame}`;
         }
         
         // Fallback to image path from segmentation data

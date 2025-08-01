@@ -164,7 +164,25 @@ async def get_user_segments(user_id: str):
     segments = segment_manager.get_user_segments(user_id)
     return {"segments": segments}
 
-@router.get("/segmentation/user/{user_id}")
+@router.get("/visualizations/{user_id}")
+async def get_segmentation_visualizations(user_id: str):
+    """Get a list of available segmentation visualization images for a user."""
+    try:
+        visualizations_dir = os.path.join(storage.base_path, "segmentation_visualizations")
+        if not os.path.exists(visualizations_dir):
+            return {"visualizations": []}
+
+        user_visualizations = []
+        for filename in os.listdir(visualizations_dir):
+            if filename.startswith(f"segmentation_{user_id}") and filename.endswith(".png"):
+                user_visualizations.append(f"/static/segmentation_visualizations/{filename}")
+        
+        return {"visualizations": user_visualizations}
+    except Exception as e:
+        logger.error(f"Error getting segmentation visualizations for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error getting visualizations")
+
+@router.get("/user/{user_id}")
 async def get_user_segmentation_data(user_id: str):
     """Get stored segmentation data for a specific user"""
     try:
