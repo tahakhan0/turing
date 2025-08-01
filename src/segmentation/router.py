@@ -450,10 +450,11 @@ async def get_frame_status(user_id: str):
 
 @router.post("/segment/frames/{user_id}/verify/{frame_id}")
 async def verify_frame(user_id: str, frame_id: str, request: dict):
-    """Verify (approve/reject) a processed frame"""
+    """Verify (approve/reject) a processed frame and add to main segmentation data"""
     try:
         approved = request.get("approved", True)
         
+        # Load the streaming status file to get frame details
         frame_status = storage.load_frame_status(user_id)
         if not frame_status:
             raise HTTPException(status_code=404, detail="No frame processing found for user")
@@ -466,19 +467,34 @@ async def verify_frame(user_id: str, frame_id: str, request: dict):
         if frame_data["status"] != "completed":
             raise HTTPException(status_code=400, detail="Frame not ready for verification")
         
-        # Update verification status
+        # Update verification status in the streaming file
         frame_data["verified"] = approved
         frame_data["verified_at"] = time.time()
-        
-        # Save updated status
         frame_status["updated_at"] = time.time()
         storage.save_frame_status(user_id, frame_status)
-        
+
+        # If approved, add the segments to the main segmentation data file
+        if approved and frame_data.get("segments"):
+            # Load the main segmentation data
+            main_segmentation_data = storage.load_segmentation_data(user_id)
+            if not main_segmentation_data:
+                main_segmentation_data = {"segments": [], "permissions": []}
+
+            # Add new segments, ensuring they are marked as verified
+            for segment in frame_data["segments"]:
+                segment["verified"] = True
+                segment["verified_at"] = time.time()
+                main_segmentation_data["segments"].append(segment)
+            
+            # Save the updated main segmentation data
+            storage.save_segmentation_data(user_id, main_segmentation_data)
+            logger.info(f"Added {len(frame_data['segments'])} verified segments for user {user_id}")
+
         return {
             "status": "success",
             "frame_id": frame_id,
             "verified": approved,
-            "message": f"Frame {'approved' if approved else 'rejected'}"
+            "message": f"Frame {'approved' if approved else 'rejected'} and processed."
         }
         
     except Exception as e:
@@ -550,7 +566,7 @@ async def process_frames_background(user_id: str, frame_status_data: dict):
 @router.post("/permission/add")
 async def add_permission(request: PermissionRequest):
     """Add access permission for a labeled person to an area (use area_id='all' for all areas)"""
-    result = segment_manager.add_person_permission(
+    result = await segment_manager.add_person_permission(
         request.person_name,
         request.user_id,
         request.area_id,
@@ -593,7 +609,7 @@ async def get_area_permissions(area_id: str, user_id: str):
 @router.get("/people/{user_id}")
 async def get_labeled_people(user_id: str):
     """Get all labeled people from face recognition for a user"""
-    people = segment_manager.get_labeled_people(user_id)
+    people = await segment_manager.get_labeled_people(user_id)
     return {"people": people}
 
 @router.delete("/permission/person/{person_name}/user/{user_id}/area/{area_id}")

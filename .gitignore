@@ -7,3 +7,4 @@ __pycache__
 .venv/
 face_encodings/
 visualizations/
+src/interfaces/.DS_STORE

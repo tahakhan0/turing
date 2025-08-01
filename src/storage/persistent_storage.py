@@ -181,32 +181,35 @@ class PersistentStorage:
     
     # Segmentation Storage Methods
     def save_segmentation_data(self, user_id: str, segmentation_data: Dict[str, Any]) -> str:
-        """Save segmentation results for a user"""
+        """Saves segmentation data for a user, OVERWRITING the file."""
         user_seg_dir = os.path.join(self.segmentation_path, user_id)
         os.makedirs(user_seg_dir, exist_ok=True)
-        
         segments_file = os.path.join(user_seg_dir, "segments.json")
-        
-        # Load existing data or create new
+
+        # This method now expects a complete data structure to write.
+        # To preserve keys that might not be passed in every call (e.g., permissions),
+        # we load the old data first and update it with the new data.
         if os.path.exists(segments_file):
             try:
                 with open(segments_file, 'r') as f:
                     existing_data = json.load(f)
-            except:
+            except (json.JSONDecodeError, FileNotFoundError):
                 existing_data = {"segments": [], "permissions": []}
         else:
             existing_data = {"segments": [], "permissions": []}
-        
-        # Merge new segmentation data
+
+        # Update existing data with the new data provided
         if "segments" in segmentation_data:
-            existing_data["segments"].extend(segmentation_data["segments"])
+            existing_data["segments"] = segmentation_data["segments"]
+        if "permissions" in segmentation_data:
+            existing_data["permissions"] = segmentation_data["permissions"]
         
         existing_data["last_updated"] = datetime.now().isoformat()
-        
+
         with open(segments_file, 'w') as f:
             json.dump(existing_data, f, indent=2)
         
-        logger.info(f"Saved segmentation data for user {user_id}")
+        logger.info(f"Saved (overwrote) segmentation data for user {user_id}")
         return segments_file
     
     def load_segmentation_data(self, user_id: str) -> Optional[Dict[str, Any]]:
