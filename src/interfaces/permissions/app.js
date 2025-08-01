@@ -112,20 +112,36 @@ class AccessPermissionsUI {
     }
 
     async loadInitialData() {
+        // Load data with individual error handling to prevent one failure from blocking the page
         try {
             await this.checkServiceConnection();
-            await this.loadLabeledPeople();
-            await this.loadVerifiedAreas();
-            // REMOVED: loadExistingPermissions() - start with empty permissions for better performance
-            
-            this.displayInterface();
-            this.updateSummary();
-            
         } catch (error) {
-            console.error('Failed to load initial data:', error);
-            this.showError(error.message);
-        } finally {
-            this.loadingState.classList.add('hidden');
+            console.error('Service connection check failed:', error);
+            // Continue loading even if connection check fails
+        }
+
+        try {
+            await this.loadLabeledPeople();
+        } catch (error) {
+            console.error('Failed to load labeled people:', error);
+            this.labeledPeople = []; // Fallback to empty array
+        }
+
+        try {
+            await this.loadVerifiedAreas();
+        } catch (error) {
+            console.error('Failed to load verified areas:', error);
+            this.verifiedAreas = []; // Fallback to empty array
+        }
+
+        // Always display the interface, even with partial data
+        this.displayInterface();
+        this.updateSummary();
+        this.loadingState.classList.add('hidden');
+
+        // Show error if no data was loaded
+        if (this.labeledPeople.length === 0 && this.verifiedAreas.length === 0) {
+            this.showError('Could not load permission data. Please check your connection and try refreshing.');
         }
     }
 
@@ -152,25 +168,44 @@ class AccessPermissionsUI {
     }
 
     async loadLabeledPeople() {
+        console.log(`Loading labeled people from: ${this.apiBaseUrl}/segmentation/people/${this.currentUserId}`);
         try {
-            const response = await fetch(`${this.apiBaseUrl}/segmentation/people/${this.currentUserId}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/people/${this.currentUserId}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
             if (!response.ok) {
                 throw new Error(`Failed to load labeled people: ${response.statusText}`);
             }
             
             const data = await response.json();
             this.labeledPeople = data.people || [];
+            console.log('Loaded labeled people:', this.labeledPeople);
             
         } catch (error) {
             console.error('Error loading labeled people:', error);
+            if (error.name === 'AbortError') {
+                throw new Error('Timeout loading labeled people from face recognition data');
+            }
             throw new Error('Could not load labeled people from face recognition data');
         }
     }
 
     async loadVerifiedAreas() {
+        console.log(`Loading verified areas from: ${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
         try {
-            // First try to get segmentation data 
-            const response = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
             if (!response.ok) {
                 throw new Error(`Failed to load areas: ${response.statusText}`);
             }
@@ -179,9 +214,13 @@ class AccessPermissionsUI {
             // Get areas from segmentation_data.segments since that's the structure
             const segments = data.segmentation_data?.segments || [];
             this.verifiedAreas = segments; // All segments are considered verified for permissions
+            console.log('Loaded verified areas:', this.verifiedAreas);
             
         } catch (error) {
             console.error('Error loading verified areas:', error);
+            if (error.name === 'AbortError') {
+                throw new Error('Timeout loading verified areas from segmentation data');
+            }
             throw new Error('Could not load verified areas from segmentation data');
         }
     }
@@ -306,7 +345,6 @@ class AccessPermissionsUI {
                         </div>
                         <div>
                             <h4 class="font-medium text-gray-900 capitalize">${area.area_type.replace('_', ' ')}</h4>
-                            <p class="text-sm text-gray-600">${area.dimensions?.area?.toFixed(1) || 'N/A'} m²</p>
                             ${conditions.length > 0 ? `<p class="text-xs text-orange-600">With conditions</p>` : ''}
                             ${isGlobalAccess ? `<p class="text-xs text-blue-600">Via global access</p>` : ''}
                         </div>

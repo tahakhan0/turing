@@ -287,22 +287,16 @@ def get_person_labels(user_id: str):
     """
     Get all saved person labels for a specific user.
     """
-    labels_file = f"/app/person_labels/{user_id}_labels.json"
-    if not os.path.exists(labels_file):
-        return {"labels": [], "message": f"No labels found for user {user_id}"}
+    labels_data = storage.load_face_labels(user_id)
     
-    try:
-        import json
-        with open(labels_file, "r") as f:
-            data = json.load(f)
-        
-        return {
-            "user_id": user_id,
-            "total_labels": len(data.get("labels", [])),
-            "labels": data.get("labels", [])
-        }
-    except Exception as e:
-        return {"error": f"Failed to read labels: {str(e)}"}
+    if not labels_data:
+        return {"labeled_faces": [], "message": f"No labels found for user {user_id}"}
+    
+    return {
+        "user_id": user_id,
+        "total_labels": len(labels_data.get("labeled_faces", [])),
+        "labeled_faces": labels_data.get("labeled_faces", [])
+    }
 
 
 @router.post("/train-person")

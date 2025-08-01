@@ -1,7 +1,8 @@
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import logging
-import requests
+import httpx
+import asyncio
 
 from .schemas import SegmentedArea, ResidentPermission, AreaType, PermissionCondition
 from ..storage.persistent_storage import PersistentStorage
@@ -17,6 +18,13 @@ class SegmentManager:
         self.face_recognition_base_url = face_recognition_base_url
         self.storage = PersistentStorage()
         self._users_loaded = set()  # Track which users' data has been loaded
+        self.client = httpx.AsyncClient()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.client.aclose()
     
     def add_segment(self, segment_data: Dict[str, Any], user_id: str) -> str:
         """Add a new segment from segmentation results"""
@@ -76,27 +84,30 @@ class SegmentManager:
     
     def verify_segment(self, area_id: str, user_id: str, approved: bool) -> Dict[str, Any]:
         """User verification of segmented area"""
-        # Load user data if not already loaded
         self._load_user_data(user_id)
-        
+
         if area_id not in self.segments:
             return {"error": "Segment not found"}
-        
+
         segment = self.segments[area_id]
         if segment.user_id != user_id:
             return {"error": "Unauthorized: Segment belongs to different user"}
-        
+
         if approved:
             segment.verified = True
             segment.updated_at = datetime.now()
-            self._save_user_data(user_id)
+        else:
+            # If rejected, we remove the segment entirely.
+            del self.segments[area_id]
+            # Also remove any permissions that might have been set for this area.
+            self.permissions = [p for p in self.permissions if p.area_id != area_id]
+
+        # Save the entire, updated state back to the file.
+        self._save_user_data(user_id)
+
+        if approved:
             return {"status": "success", "message": "Segment verified"}
         else:
-            # Remove unverified segment
-            del self.segments[area_id]
-            # Also remove any permissions for this area
-            self.permissions = [p for p in self.permissions if p.area_id != area_id]
-            self._save_user_data(user_id)
             return {"status": "success", "message": "Segment rejected and removed"}
     
     def get_user_segments(self, user_id: str) -> List[Dict[str, Any]]:
@@ -230,10 +241,10 @@ class SegmentManager:
         self.storage.save_segmentation_data(user_id, segmentation_data)
         logger.info(f"Saved data for user {user_id}")
     
-    def get_labeled_people(self, user_id: str) -> List[str]:
+    async def get_labeled_people(self, user_id: str) -> List[str]:
         """Fetch labeled faces from face recognition service to get list of known people"""
         try:
-            response = requests.get(f"{self.face_recognition_base_url}/face-recognition/labels/{user_id}")
+            response = await self.client.get(f"{self.face_recognition_base_url}/face-recognition/labels/{user_id}")
             if response.status_code == 200:
                 labels_data = response.json()
                 # Extract unique person names from labeled faces
@@ -250,12 +261,12 @@ class SegmentManager:
             logger.error(f"Error fetching labeled people: {str(e)}")
             return []
     
-    def is_labeled_person(self, person_name: str, user_id: str) -> bool:
+    async def is_labeled_person(self, person_name: str, user_id: str) -> bool:
         """Check if person_name is a labeled person for the user (case-insensitive)"""
-        labeled_people = self.get_labeled_people(user_id)
+        labeled_people = await self.get_labeled_people(user_id)
         return person_name.casefold() in [p.casefold() for p in labeled_people]
     
-    def add_person_permission(self, person_name: str, user_id: str, area_id: str, allowed: bool, 
+    async def add_person_permission(self, person_name: str, user_id: str, area_id: str, allowed: bool, 
                               conditions: List[str] = None) -> Dict[str, Any]:
         """Add access permission for a labeled person to a specific area or all areas"""
         # Load user data if not already loaded
@@ -265,7 +276,7 @@ class SegmentManager:
             return {"error": "Area not found"}
         
         # Validate that person_name is a labeled person for this user
-        if not self.is_labeled_person(person_name, user_id):
+        if not await self.is_labeled_person(person_name, user_id):
             return {"error": f"'{person_name}' is not a labeled person for user {user_id}"}
         
         # Convert condition strings to enums
