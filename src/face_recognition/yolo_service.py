@@ -486,7 +486,7 @@ def recognize_multiple_persons_by_body(frame, person_detections, user_id, confid
             detection = valid_detections[detection_idx]
             if person_idx is not None:
                 detection.person_name = person_names[person_idx]
-                detection.recognition_confidence = confidence
+                detection.recognition_confidence = float(confidence)
             else:
                 detection.person_name = None
                 detection.recognition_confidence = 0.0
@@ -516,7 +516,7 @@ def assign_persons_greedy(similarity_matrix, confidence_threshold):
     candidates = []
     for det_idx in range(similarity_matrix.shape[0]):
         for person_idx in range(similarity_matrix.shape[1]):
-            confidence = similarity_matrix[det_idx, person_idx]
+            confidence = float(similarity_matrix[det_idx, person_idx])
             if confidence >= confidence_threshold:
                 candidates.append((confidence, det_idx, person_idx))
     
@@ -821,17 +821,24 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
                 # Extract detections
                 detections = []
                 if results[0].boxes is not None:
-                    boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+                    # Convert numpy arrays to Python native types immediately
+                    boxes = results[0].boxes.xyxy.cpu().numpy()
                     confidences = results[0].boxes.conf.cpu().numpy()
-                    class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                    class_ids = results[0].boxes.cls.cpu().numpy()
 
                     for i, box in enumerate(boxes):
-                        class_name = yolo_model.names[class_ids[i]]
+                        class_name = yolo_model.names[int(class_ids[i])]
                         if class_name == "person":
-                            bbox = BoundingBox(x1=int(box[0]), y1=int(box[1]), x2=int(box[2]), y2=int(box[3]))
+                            # Convert numpy types to Python native types
+                            bbox = BoundingBox(
+                                x1=int(box[0]), 
+                                y1=int(box[1]), 
+                                x2=int(box[2]), 
+                                y2=int(box[3])
+                            )
                             detection = Detection(
                                 bbox=bbox,
-                                confidence=float(confidences[i]),
+                                confidence=float(confidences[i].item()),
                                 class_name=class_name
                             )
                             # Add default values for enhanced features
@@ -863,8 +870,11 @@ def batch_process_video_for_person_detection(video_paths: list, user_id: str) ->
 
         cap.release()
 
+    # Convert all numpy types before creating the final VideoAnalysis object
+    converted_frame_analyses = convert_numpy_to_python(aggregated_frame_analyses)
+    
     # Return a single VideoAnalysis object with all the aggregated results
-    return VideoAnalysis(video_path=", ".join(video_paths), analysis=aggregated_frame_analyses)
+    return VideoAnalysis(video_path=", ".join(video_paths), analysis=converted_frame_analyses)
 
 
 def train_person_from_detections(user_id, person_name, detection_images):
@@ -927,12 +937,16 @@ def convert_numpy_to_python(obj):
     """Recursively convert numpy types to Python native types for JSON serialization."""
     if isinstance(obj, np.ndarray):
         return obj.tolist()
-    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8, np.uint64, np.uint32, np.uint16, np.uint8)):
         return int(obj)
     elif isinstance(obj, (np.float64, np.float32, np.float16)):
         return float(obj)
     elif isinstance(obj, np.bool_):
         return bool(obj)
+    elif isinstance(obj, np.number):  # Catch any other numpy number types
+        return obj.item()  # Convert to Python scalar
+    elif hasattr(obj, 'model_dump'):  # Pydantic models
+        return convert_numpy_to_python(obj.model_dump())
     elif isinstance(obj, dict):
         return {key: convert_numpy_to_python(value) for key, value in obj.items()}
     elif isinstance(obj, (list, tuple)):
@@ -1048,11 +1062,6 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
             if frame_count % FRAME_INTERVAL == 0:
                 # Save unique frame to storage for segmentation
                 try:
-                    import cv2
-                    import os
-                    import hashlib
-                    from datetime import datetime
-                    
                     # Generate unique filename with frame number and hash
                     frame_hash = hashlib.md5(frame.tobytes()).hexdigest()[:8]
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1109,18 +1118,25 @@ def analyze_video_with_enhanced_recognition(video_path: str, user_id: str) -> Fa
                 person_detections = []
                 
                 if results[0].boxes is not None:
-                    boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+                    # Convert numpy arrays to Python native types immediately
+                    boxes = results[0].boxes.xyxy.cpu().numpy()
                     confidences = results[0].boxes.conf.cpu().numpy()
-                    class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                    class_ids = results[0].boxes.cls.cpu().numpy()
 
                     person_id_counter = face_id_counter  # Continue ID counter from face detections
                     for i, box in enumerate(boxes):
-                        class_name = yolo_model.names[class_ids[i]]
+                        class_name = yolo_model.names[int(class_ids[i])]
                         if class_name == "person":
-                            bbox = BoundingBox(x1=int(box[0]), y1=int(box[1]), x2=int(box[2]), y2=int(box[3]))
+                            # Convert numpy types to Python native types
+                            bbox = BoundingBox(
+                                x1=int(box[0]), 
+                                y1=int(box[1]), 
+                                x2=int(box[2]), 
+                                y2=int(box[3])
+                            )
                             detection = Detection(
                                 bbox=bbox,
-                                confidence=float(confidences[i]),
+                                confidence=float(confidences[i].item()),
                                 class_name=class_name,
                                 person_name=None,  # Set person_name to None for unrecognized persons
                                 recognition_confidence=0.0,

@@ -22,6 +22,13 @@ storage = PersistentStorage()
 
 router = APIRouter()
 
+@router.get("/health")
+def health_check():
+    """
+    Health check endpoint to verify service availability.
+    """
+    return {"status": "healthy", "service": "face-recognition"}
+
 @router.post("/enrollment", response_model=VideoAnalysis)
 def dev_enrollment(payload: EnrollmentPayload):
     """
@@ -50,7 +57,7 @@ def analyze_video(payload: EnrollmentPayload):
     Analyze a video for both person and face recognition with body-based fallback.
     Identifies known faces and returns encodings for unknown faces.
     Uses face recognition first, then falls back to body-based recognition.
-    """
+"""
     if payload.video_path:
         return yolo_service.analyze_video_with_enhanced_recognition(payload.video_path, payload.user_id)
     elif payload.folder_path:
@@ -189,13 +196,14 @@ def get_frame_detections(user_id: str, frame_number: int, video_path: str = None
         
         detections_info = []
         if results[0].boxes is not None:
-            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+            # Convert numpy arrays to Python native types immediately
+            boxes = results[0].boxes.xyxy.cpu().numpy()
             confidences = results[0].boxes.conf.cpu().numpy()
-            class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+            class_ids = results[0].boxes.cls.cpu().numpy()
             
             person_id = 0
             for i, box in enumerate(boxes):
-                class_name = yolo_service.yolo_model.names[class_ids[i]]
+                class_name = yolo_service.yolo_model.names[int(class_ids[i])]
                 if class_name == "person":
                     detections_info.append({
                         "person_id": person_id,
@@ -205,7 +213,7 @@ def get_frame_detections(user_id: str, frame_number: int, video_path: str = None
                             "x2": int(box[2]),
                             "y2": int(box[3])
                         },
-                        "confidence": float(confidences[i]),
+                        "confidence": float(confidences[i].item()),
                         "detection_type": "person",
                         "class_name": "person"
                     })
