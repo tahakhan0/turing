@@ -31,6 +31,7 @@ class FrameAnalysis(BaseModel):
     frame_number: int
     detections: List[Detection]
     visualization_url: Optional[str] = None
+    video_path: Optional[str] = None
     visualization_urls: Optional[dict] = None  # Contains separate URLs for person, face, and combined views
 
 class VideoAnalysis(BaseModel):

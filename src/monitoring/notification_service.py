@@ -15,6 +15,10 @@ from fastapi import WebSocket
 import asyncio
 
 from . import gemini_service as gemini_service_client
+from ..storage.persistent_storage import PersistentStorage
+
+# Initialize persistent storage
+storage = PersistentStorage()
 
 
 logger = logging.getLogger(__name__)
@@ -126,8 +130,8 @@ class NotificationService:
                                    violation_id: str) -> Optional[str]:
         """Save frame image for notification and return URL"""
         try:
-            # Create notification frames directory
-            frames_dir = f"/app/static/notification_frames"
+            # Create notification frames directory using persistent storage
+            frames_dir = f"{storage.base_path}/notification_frames"
             os.makedirs(frames_dir, exist_ok=True)
             
             # Save frame image

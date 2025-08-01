@@ -29,24 +29,6 @@ logger = logging.getLogger(__name__)
 
 class ExternalSegmentationService:
     """Client for external turing-segmentation service"""
-    
-    def __init__(self):
-        # Configuration from environment variables
-        self.base_url = os.getenv("TURING_SEGMENTATION_URL", "http://localhost:8000")
-        self.api_key = os.getenv("TURING_SEGMENTATION_API_KEY")
-        
-        if not self.api_key:
-            logger.error("TURING_SEGMENTATION_API_KEY environment variable not set")
-            raise ValueError("API key required for external segmentation service")
-        
-        # Headers for API requests
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        logger.info(f"External segmentation service configured: {self.base_url}")
-    
     def _encode_image(self, image_path: str) -> str:
         """Encode image file as base64 string"""
         try:

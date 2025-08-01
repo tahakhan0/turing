@@ -169,13 +169,16 @@ class AccessPermissionsUI {
 
     async loadVerifiedAreas() {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/segmentation/segments/user/${this.currentUserId}`);
+            // First try to get segmentation data 
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
             if (!response.ok) {
                 throw new Error(`Failed to load areas: ${response.statusText}`);
             }
             
             const data = await response.json();
-            this.verifiedAreas = (data.segments || []).filter(area => area.verified);
+            // Get areas from segmentation_data.segments since that's the structure
+            const segments = data.segmentation_data?.segments || [];
+            this.verifiedAreas = segments; // All segments are considered verified for permissions
             
         } catch (error) {
             console.error('Error loading verified areas:', error);

@@ -10,7 +10,7 @@ from ..storage.persistent_storage import PersistentStorage
 # Initialize persistent storage
 storage = PersistentStorage()
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
-VISUALIZATIONS_DIR = "/app/static/visualizations"
+VISUALIZATIONS_DIR = os.path.join(storage.base_path, "visualizations")
 
 def load_known_faces(user_id):
     """Load known faces for a specific user from persistent storage"""

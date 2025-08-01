@@ -9,11 +9,20 @@ class AreaSegmentationUI {
         this.segmentationData = null;
         this.areasData = [];
         this.verifiedAreas = new Set();
+        this.websocket = null;
+        this.isWebSocketConnected = false;
+        this.frameProgress = new Map(); // Track individual frame progress
+        this.totalFrames = 0;
         
         this.initializeElements();
         this.attachEventListeners();
         this.loadDataFromUrl();
         this.checkServiceConnection();
+        
+        // Cleanup WebSocket on page unload
+        window.addEventListener('beforeunload', () => {
+            this.disconnectWebSocket();
+        });
     }
 
     initializeElements() {
@@ -32,6 +41,7 @@ class AreaSegmentationUI {
         // Navigation elements
         this.backToFacesBtn = document.getElementById('back-to-faces');
         this.continueBtn = document.getElementById('continue-to-permissions');
+        this.proceedBtn = document.getElementById('proceed-to-permissions');
 
         // Info display elements
         this.currentVideoPathElement = document.getElementById('current-video-path');
@@ -45,36 +55,33 @@ class AreaSegmentationUI {
         this.errorState = document.getElementById('error-state');
         this.errorMessage = document.getElementById('error-message');
 
-        // Summary elements
-        this.totalAreas = document.getElementById('total-areas');
-        this.verifiedAreasCount = document.getElementById('verified-areas');
-        this.areaTypes = document.getElementById('area-types');
-        this.totalAreaSize = document.getElementById('total-area-size');
+        // Summary elements removed
 
-        // Frame visualization elements
-        this.frameImage = document.getElementById('frame-image');
-        this.segmentationOverlay = document.getElementById('segmentation-overlay');
-        this.showOriginalBtn = document.getElementById('show-original');
-        this.showSegmentedBtn = document.getElementById('show-segmented');
+        // Frame visualization elements (removed in unified design)
+        // this.frameImage = document.getElementById('frame-image');
+        // this.segmentationOverlay = document.getElementById('segmentation-overlay');
+        // this.showOriginalBtn = document.getElementById('show-original');
+        // this.showSegmentedBtn = document.getElementById('show-segmented');
 
-        // Areas grid elements
-        this.areasGrid = document.getElementById('areas-grid');
+        // Segmented images elements
+        this.segmentedImagesContainer = document.getElementById('segmented-images-container');
         this.filterAreaType = document.getElementById('filter-area-type');
         this.filterVerification = document.getElementById('filter-verification');
+        this.viewMode = document.getElementById('view-mode');
         this.verifyAllBtn = document.getElementById('verify-all');
 
-        // Modal elements
-        this.modal = document.getElementById('verification-modal');
-        this.modalTitle = document.getElementById('modal-title');
-        this.modalAreaType = document.getElementById('modal-area-type');
-        this.modalConfidence = document.getElementById('modal-confidence');
-        this.modalDimensions = document.getElementById('modal-dimensions');
-        this.modalAreaSize = document.getElementById('modal-area-size');
-        this.modalAreaImage = document.getElementById('modal-area-image');
-        this.modalOverlayCanvas = document.getElementById('modal-overlay-canvas');
-        this.verifyAreaBtn = document.getElementById('verify-area');
-        this.rejectAreaBtn = document.getElementById('reject-area');
-        this.closeModalBtn = document.getElementById('close-modal');
+        // Modal elements for expanded image view
+        this.imageModal = document.getElementById('image-modal');
+        this.modalClose = document.getElementById('modal-close');
+        this.modalImage = document.getElementById('modal-image');
+        this.modalFrameName = document.getElementById('modal-frame-name');
+        this.modalSegmentsCount = document.getElementById('modal-segments-count');
+        this.modalVerificationStatus = document.getElementById('modal-verification-status');
+        this.modalButtons = document.getElementById('modal-buttons');
+        this.modalChangeButton = document.getElementById('modal-change-button');
+        this.modalApprove = document.getElementById('modal-approve');
+        this.modalReject = document.getElementById('modal-reject');
+        this.modalChange = document.getElementById('modal-change');
         
         // Auto-processing notice
         this.autoProcessingNotice = document.getElementById('auto-processing-notice');
@@ -84,6 +91,7 @@ class AreaSegmentationUI {
         // Navigation
         this.backToFacesBtn.addEventListener('click', () => this.navigateToFaceRecognition());
         this.continueBtn.addEventListener('click', () => this.navigateToPermissions());
+        this.proceedBtn.addEventListener('click', () => this.navigateToPermissions());
 
         // Threshold sliders
         this.boxThresholdSlider.addEventListener('input', (e) => {
@@ -99,26 +107,35 @@ class AreaSegmentationUI {
         // Segmentation
         this.startSegmentationBtn.addEventListener('click', () => this.startSegmentation());
 
-        // Visualization controls
-        this.showOriginalBtn.addEventListener('click', () => this.showOriginalFrame());
-        this.showSegmentedBtn.addEventListener('click', () => this.showSegmentedFrame());
+        // Visualization controls (removed in unified design)
+        // this.showOriginalBtn.addEventListener('click', () => this.showOriginalFrame());
+        // this.showSegmentedBtn.addEventListener('click', () => this.showSegmentedFrame());
 
         // Verification
         this.verifyAllBtn.addEventListener('click', () => this.verifyAllAreas());
 
-        // Filters
+        // Filters and view mode
         this.filterAreaType.addEventListener('change', () => this.applyFilters());
         this.filterVerification.addEventListener('change', () => this.applyFilters());
+        this.viewMode.addEventListener('change', () => this.displaySegmentedImages());
 
-        // Modal
-        this.closeModalBtn.addEventListener('click', () => this.closeModal());
-        this.verifyAreaBtn.addEventListener('click', () => this.verifyCurrentArea(true));
-        this.rejectAreaBtn.addEventListener('click', () => this.verifyCurrentArea(false));
-
-        // Close modal on outside click
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.closeModal();
+        // Modal event listeners
+        this.modalClose.addEventListener('click', () => this.hideExpandedView());
+        this.modalApprove.addEventListener('click', () => this.handleModalApproval(true));
+        this.modalReject.addEventListener('click', () => this.handleModalApproval(false));
+        this.modalChange.addEventListener('click', () => this.showModalVerificationOptions());
+        
+        // Close modal on overlay click
+        this.imageModal.addEventListener('click', (e) => {
+            if (e.target === this.imageModal) {
+                this.hideExpandedView();
+            }
+        });
+        
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !this.imageModal.classList.contains('hidden')) {
+                this.hideExpandedView();
             }
         });
     }
@@ -128,6 +145,7 @@ class AreaSegmentationUI {
         this.currentVideoPath = urlParams.get('video_path');
         this.currentUserId = urlParams.get('user_id');
         const facesCount = urlParams.get('faces_count') || '0';
+        const autoStart = urlParams.get('auto_start') === 'true';
 
         if (this.currentVideoPath) {
             this.currentVideoPathElement.textContent = this.currentVideoPath;
@@ -144,12 +162,27 @@ class AreaSegmentationUI {
             this.serviceUrlInput.value = serviceUrl;
         }
 
-        // Auto-start segmentation if coming from face recognition
-        if (this.currentUserId && facesCount && parseInt(facesCount) > 0) {
-            // Delay to allow UI to initialize
+        // Debug logging to help troubleshoot
+        console.log('URL Parameters:', {
+            autoStart,
+            currentUserId: this.currentUserId,
+            facesCount,
+            facesCountInt: parseInt(facesCount)
+        });
+
+        // Auto-start segmentation if coming from face recognition with auto_start flag
+        if (autoStart && this.currentUserId && facesCount && parseInt(facesCount) > 0) {
+            console.log('Auto-starting segmentation...');
+            // Hide setup section immediately and show loading
+            this.setupSection.classList.add('hidden');
+            this.setLoadingState(true);
+            
+            // Start segmentation immediately with minimal delay
             setTimeout(() => {
                 this.autoStartSegmentation();
-            }, 1000);
+            }, 100);
+        } else {
+            console.log('Not auto-starting. Showing setup section.');
         }
     }
 
@@ -199,13 +232,185 @@ class AreaSegmentationUI {
         this.startSegmentationBtn.classList.add('bg-green-600');
         this.startSegmentationBtn.classList.remove('bg-brand-purple');
         
-        // Start the segmentation process
+        // Start the segmentation process directly using streaming
         await this.startSegmentation();
         
         // Hide the notice after processing
         if (this.autoProcessingNotice) {
             this.autoProcessingNotice.classList.add('hidden');
         }
+    }
+
+    async connectWebSocket() {
+        if (!this.currentUserId) {
+            console.error('Cannot connect WebSocket without user ID');
+            return false;
+        }
+
+        try {
+            const wsUrl = this.apiBaseUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+            this.websocket = new WebSocket(`${wsUrl}/segmentation/ws/segmentation/${this.currentUserId}`);
+            
+            this.websocket.onopen = () => {
+                console.log('WebSocket connected for segmentation');
+                this.isWebSocketConnected = true;
+            };
+            
+            this.websocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                this.handleWebSocketMessage(message);
+            };
+            
+            this.websocket.onclose = (event) => {
+                console.log('WebSocket disconnected:', event.code, event.reason);
+                this.isWebSocketConnected = false;
+                // Try to reconnect after a delay if it wasn't intentional
+                if (!event.wasClean) {
+                    setTimeout(() => this.connectWebSocket(), 5000);
+                }
+            };
+            
+            this.websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.isWebSocketConnected = false;
+            };
+            
+            return true;
+        } catch (error) {
+            console.error('Failed to connect WebSocket:', error);
+            return false;
+        }
+    }
+
+    disconnectWebSocket() {
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+            this.isWebSocketConnected = false;
+        }
+    }
+
+    handleWebSocketMessage(message) {
+        console.log('WebSocket message received:', message);
+        
+        switch (message.type) {
+            case 'connection_established':
+                console.log('WebSocket connection confirmed');
+                break;
+                
+            case 'batch_started':
+                this.handleBatchStarted(message);
+                break;
+                
+            case 'frame_started':
+                this.handleFrameStarted(message);
+                break;
+                
+            case 'frame_completed':
+                this.handleFrameCompleted(message);
+                break;
+                
+            case 'frame_failed':
+                this.handleFrameFailed(message);
+                break;
+                
+            case 'batch_completed':
+                this.handleBatchCompleted(message);
+                break;
+                
+            case 'batch_failed':
+                this.handleBatchFailed(message);
+                break;
+                
+            default:
+                console.log('Unknown WebSocket message type:', message.type);
+        }
+    }
+
+    handleBatchStarted(message) {
+        this.totalFrames = message.total_frames;
+        this.frameProgress.clear();
+        
+        // Initialize progress for all frames
+        message.frame_files.forEach(frame => {
+            this.frameProgress.set(frame, { status: 'pending', segments: 0 });
+        });
+        
+        this.updateProgressDisplay();
+        console.log(`Batch started: ${message.total_frames} frames to process`);
+    }
+
+    handleFrameStarted(message) {
+        this.frameProgress.set(message.frame_name, { 
+            status: 'processing', 
+            segments: 0 
+        });
+        this.updateProgressDisplay();
+        console.log(`Frame started: ${message.frame_name}`);
+    }
+
+    handleFrameCompleted(message) {
+        this.frameProgress.set(message.frame_name, { 
+            status: 'completed', 
+            segments: message.segments_found,
+            visualization_url: message.visualization_url 
+        });
+        this.updateProgressDisplay();
+        console.log(`Frame completed: ${message.frame_name}, ${message.segments_found} segments found`);
+    }
+
+    handleFrameFailed(message) {
+        this.frameProgress.set(message.frame_name, { 
+            status: 'failed', 
+            segments: 0,
+            error: message.error 
+        });
+        this.updateProgressDisplay();
+        console.error(`Frame failed: ${message.frame_name}, error: ${message.error}`);
+    }
+
+    async handleBatchCompleted(message) {
+        console.log('Batch completed:', message);
+        this.setLoadingState(false);
+        
+        // Load the complete results
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            if (response.ok) {
+                const data = await response.json();
+                this.segmentationData = data.segmentation_data;
+                this.areasData = this.segmentationData.segments || [];
+                this.displayResults(null, true);
+            }
+        } catch (error) {
+            console.error('Error loading final results:', error);
+            this.showError('Failed to load final results');
+        }
+    }
+
+    handleBatchFailed(message) {
+        console.error('Batch failed:', message);
+        this.setLoadingState(false);
+        this.showError(`Batch processing failed: ${message.error}`);
+    }
+
+    updateProgressDisplay() {
+        // Update the loading state with progress information
+        const completed = Array.from(this.frameProgress.values()).filter(p => p.status === 'completed').length;
+        const failed = Array.from(this.frameProgress.values()).filter(p => p.status === 'failed').length;
+        const processing = Array.from(this.frameProgress.values()).filter(p => p.status === 'processing').length;
+        
+        // Update progress text
+        if (this.segmentText) {
+            if (processing > 0) {
+                this.segmentText.textContent = `Processing frame ${completed + failed + processing} of ${this.totalFrames}...`;
+            } else if (completed + failed === this.totalFrames) {
+                this.segmentText.textContent = `Completed ${completed} frames, ${failed} failed`;
+            }
+        }
+        
+        // You could add a progress bar here if needed
+        console.log(`Progress: ${completed} completed, ${failed} failed, ${processing} processing, ${this.totalFrames} total`);
     }
 
     async startSegmentation() {
@@ -218,173 +423,493 @@ class AreaSegmentationUI {
         this.hideError();
 
         try {
-            // First, check if there are already segmented results from extracted frames
-            const existingDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
-            
-            if (existingDataResponse.ok) {
-                const existingData = await existingDataResponse.json();
-                if (existingData.segmentation_data && existingData.segmentation_data.segments && existingData.segmentation_data.segments.length > 0) {
-                    // Use existing segmentation data
-                    console.log('Found existing segmentation data, displaying results...');
-                    this.segmentationData = existingData.segmentation_data;
-                    this.areasData = this.segmentationData.segments || [];
-                    
-                    // Show loading message for existing data
-                    this.segmentText.textContent = 'Loading existing segmentation results...';
-                    this.startSegmentationBtn.classList.add('bg-blue-600');
-                    this.startSegmentationBtn.classList.remove('bg-brand-purple');
-                    
-                    this.displayResults(null, true); // Show existing results
-                    return;
-                }
-            }
-
-            // If no existing data, try to segment extracted frames
-            const segmentFramesResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}`, {
+            // Start streaming segmentation
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}/stream`, {
                 method: 'POST'
             });
 
-            if (segmentFramesResponse.ok) {
-                const frameSegmentData = await segmentFramesResponse.json();
-                
-                if (frameSegmentData.status === 'success' && frameSegmentData.total_segments_found > 0) {
-                    // Load the newly created segmentation data
-                    const newDataResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
-                    if (newDataResponse.ok) {
-                        const newData = await newDataResponse.json();
-                        this.segmentationData = newData.segmentation_data;
-                        this.areasData = this.segmentationData.segments || [];
-                        this.displayResults(null, true);
-                        return;
-                    }
-                }
+            if (!response.ok) {
+                const errorData = await response.json();
+                this.showError(errorData.detail || 'Failed to start segmentation');
+                this.setLoadingState(false);
+                return;
             }
 
-            // Fallback to video/image segmentation if available
-            if (this.currentVideoPath) {
-                console.log('No extracted frames available, trying direct video segmentation');
-                
-                // Extract frame from video first
-                const frameNumber = parseInt(this.frameNumberInput.value) || 1;
-                const extractResponse = await fetch(`${this.apiBaseUrl}/face-recognition/extract-frame`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        video_path: this.currentVideoPath,
-                        frame_number: frameNumber,
-                        user_id: this.currentUserId
-                    })
-                });
+            const data = await response.json();
+            console.log('Streaming started:', data);
 
-                if (!extractResponse.ok) {
-                    throw new Error(`Failed to extract frame: ${extractResponse.statusText}`);
-                }
+            // Initialize progress tracking
+            this.totalFrames = data.total_frames;
+            this.processedFrames = 0;
+            this.completedFrames = [];
 
-                const frameData = await extractResponse.json();
-                const imagePath = frameData.image_path;
+            // Start real-time polling for frame status
+            this.startFrameStatusPolling();
 
-                // Now segment the extracted frame using Replicate
-                const segmentResponse = await fetch(`${this.apiBaseUrl}/segmentation/segment/replicate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        image_path: imagePath,
-                        user_id: this.currentUserId,
-                        box_threshold: parseFloat(this.boxThresholdSlider.value),
-                        text_threshold: parseFloat(this.textThresholdSlider.value)
-                    })
-                });
-
-                if (!segmentResponse.ok) {
-                    throw new Error(`Segmentation failed: ${segmentResponse.statusText}`);
-                }
-
-                this.segmentationData = await segmentResponse.json();
-                console.log('Segmentation response:', this.segmentationData);
-                
-                if (this.segmentationData.status === 'error') {
-                    throw new Error(this.segmentationData.error);
-                }
-
-                this.areasData = this.segmentationData.segments || [];
-                this.displayResults(null, false); // Pass null so it uses segmentationData.image_path
-            } else {
-                throw new Error('No video path provided and no extracted frames found. Please complete face recognition first.');
-            }
-            
         } catch (error) {
-            console.error('Segmentation error:', error);
-            this.showError(error.message);
-        } finally {
+            console.error('Error starting segmentation:', error);
+            this.showError('Failed to start segmentation process');
             this.setLoadingState(false);
         }
+    }
+
+    startFrameStatusPolling() {
+        // Clear any existing polling
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+        }
+
+        // Start polling for frame status
+        this.pollingInterval = setInterval(() => this.checkFrameStatus(), 1500);
+        
+        // Check immediately
+        this.checkFrameStatus();
+    }
+
+    async checkFrameStatus() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}/status`);
+            
+            if (!response.ok) {
+                console.error('Failed to get frame status');
+                return;
+            }
+
+            const data = await response.json();
+            this.updateProgressDisplay(data);
+            this.displayCompletedFrames(data.frames);
+
+            // Stop polling if all frames are processed
+            if (data.overall_status === 'completed' || data.overall_status === 'failed') {
+                clearInterval(this.pollingInterval);
+                this.setLoadingState(false);
+                
+                if (data.completed_frames > 0) {
+                    this.enableContinueButtons();
+                }
+            }
+
+        } catch (error) {
+            console.error('Error checking frame status:', error);
+        }
+    }
+
+    updateProgressDisplay(statusData) {
+        const { completed_frames, total_frames, overall_status } = statusData;
+        
+        // Update progress indicator
+        const progressText = `${completed_frames}/${total_frames} frames processed`;
+        
+        // Update loading state text if it exists
+        const loadingElement = this.loadingState.querySelector('p');
+        if (loadingElement) {
+            loadingElement.textContent = progressText;
+        }
+
+        console.log(`Progress: ${progressText} (${overall_status})`);
+    }
+
+    displayCompletedFrames(frames) {
+        // Show results section and hide setup when we have any completed frames
+        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.web_visualization_path);
+        
+        if (completedFrames.length > 0) {
+            this.setupSection.classList.add('hidden');
+            this.resultsSection.classList.remove('hidden');
+        }
+
+        // Always update the display, even if no frames are ready yet
+        this.updateFrameDisplay(frames);
+    }
+
+    updateFrameDisplay(frames) {
+        // Get or create the grid container
+        let gridContainer = this.segmentedImagesContainer.querySelector('.grid');
+        if (!gridContainer) {
+            this.segmentedImagesContainer.innerHTML = '';
+            gridContainer = document.createElement('div');
+            gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
+            this.segmentedImagesContainer.appendChild(gridContainer);
+        }
+
+        // Group frames by status
+        const completedFrames = frames.filter(frame => frame.status === 'completed' && frame.web_visualization_path);
+        const processingFrames = frames.filter(frame => frame.status === 'processing');
+        const pendingFrames = frames.filter(frame => frame.status === 'pending');
+
+        // Clear existing content
+        gridContainer.innerHTML = '';
+
+        // Add completed frames first
+        completedFrames.forEach(frame => {
+            const frameCard = this.createFrameVerificationCard(frame);
+            gridContainer.appendChild(frameCard);
+        });
+
+        // Add processing frames
+        processingFrames.forEach(frame => {
+            const processingCard = this.createProcessingCard(frame);
+            gridContainer.appendChild(processingCard);
+        });
+
+        // Show a summary if we have pending frames
+        if (pendingFrames.length > 0) {
+            const summaryCard = this.createPendingSummaryCard(pendingFrames.length);
+            gridContainer.appendChild(summaryCard);
+        }
+    }
+
+    createProcessingCard(frame) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-yellow-300 rounded-lg overflow-hidden animate-pulse';
+
+        card.innerHTML = `
+            <div class="h-64 bg-gray-200 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="loading-spinner mx-auto mb-2"></div>
+                    <p class="text-gray-600 font-medium">Processing...</p>
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-900 mb-2">${frame.frame_file}</h3>
+                <p class="text-sm text-yellow-600">Analyzing frame...</p>
+            </div>
+        `;
+
+        return card;
+    }
+
+    createPendingSummaryCard(count) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-gray-300 rounded-lg overflow-hidden';
+
+        card.innerHTML = `
+            <div class="h-64 bg-gray-100 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="text-4xl text-gray-400 mb-2">⏳</div>
+                    <p class="text-gray-600 font-medium">${count} more frames</p>
+                    <p class="text-sm text-gray-500">Waiting to process</p>
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-900 mb-2">Pending Frames</h3>
+                <p class="text-sm text-gray-600">${count} frames in queue</p>
+            </div>
+        `;
+
+        return card;
+    }
+
+    createFrameVerificationCard(frame) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-gray-300 rounded-lg overflow-hidden frame-card';
+        card.dataset.frameId = frame.frame_file;
+
+        const isVerified = frame.verified !== undefined;
+        const isApproved = frame.verified === true;
+        
+        // Update border color based on verification status
+        if (isVerified) {
+            card.className = `bg-white border-2 rounded-lg overflow-hidden frame-card ${
+                isApproved ? 'border-green-500' : 'border-red-500'
+            }`;
+        }
+
+        card.innerHTML = `
+            <div class="relative">
+                <img src="${this.apiBaseUrl}${frame.web_visualization_path}" alt="Segmented frame" class="w-full h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity">
+                ${isVerified ? `
+                    <div class="absolute top-2 right-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            isApproved ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }">
+                            ${isApproved ? '✓ Approved' : '✗ Rejected'}
+                        </span>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-900 mb-2">${frame.frame_file}</h3>
+                <p class="text-sm text-gray-600 mb-3">${frame.segments_found} segments detected</p>
+                
+                ${!isVerified ? `
+                    <div class="flex space-x-2">
+                        <button class="approve-btn flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                                data-frame-id="${frame.frame_file}">
+                            ✓ Approve
+                        </button>
+                        <button class="reject-btn flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                                data-frame-id="${frame.frame_file}">
+                            ✗ Reject
+                        </button>
+                    </div>
+                ` : `
+                    <button class="change-btn w-full bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                            data-frame-id="${frame.frame_file}">
+                        Change Decision
+                    </button>
+                `}
+            </div>
+        `;
+
+        // Add event listeners for buttons
+        const approveBtn = card.querySelector('.approve-btn');
+        const rejectBtn = card.querySelector('.reject-btn');
+        const changeBtn = card.querySelector('.change-btn');
+        const image = card.querySelector('img');
+
+        if (approveBtn) {
+            approveBtn.addEventListener('click', () => this.verifyFrame(frame.frame_file, true));
+        }
+        if (rejectBtn) {
+            rejectBtn.addEventListener('click', () => this.verifyFrame(frame.frame_file, false));
+        }
+        if (changeBtn) {
+            changeBtn.addEventListener('click', () => this.showVerificationOptions(frame.frame_file));
+        }
+        
+        // Add click event listener to image for expanded view
+        if (image) {
+            image.addEventListener('click', () => this.showExpandedView(frame));
+        }
+
+        return card;
+    }
+
+    async verifyFrame(frameId, approved) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/segment/frames/${this.currentUserId}/verify/${frameId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ approved: approved })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to verify frame');
+            }
+
+            // Refresh the display to show updated verification status
+            this.checkFrameStatus();
+
+        } catch (error) {
+            console.error('Error verifying frame:', error);
+            this.showError('Failed to verify frame');
+        }
+    }
+
+    showVerificationOptions(frameId) {
+        const card = document.querySelector(`[data-frame-id="${frameId}"]`);
+        const buttonContainer = card.querySelector('.p-4 > div:last-child, .p-4 > button:last-child').parentElement;
+        
+        buttonContainer.innerHTML = `
+            <div class="flex space-x-2">
+                <button class="approve-btn flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                        data-frame-id="${frameId}">
+                    ✓ Approve
+                </button>
+                <button class="reject-btn flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                        data-frame-id="${frameId}">
+                    ✗ Reject
+                </button>
+            </div>
+        `;
+
+        // Re-add event listeners
+        const approveBtn = buttonContainer.querySelector('.approve-btn');
+        const rejectBtn = buttonContainer.querySelector('.reject-btn');
+        
+        approveBtn.addEventListener('click', () => this.verifyFrame(frameId, true));
+        rejectBtn.addEventListener('click', () => this.verifyFrame(frameId, false));
+    }
+
+    showExpandedView(frame) {
+        this.currentModalFrame = frame;
+        
+        // Set image and details
+        this.modalImage.src = `${this.apiBaseUrl}${frame.web_visualization_path}`;
+        this.modalFrameName.textContent = frame.frame_file;
+        this.modalSegmentsCount.textContent = `${frame.segments_found} segments detected`;
+        
+        // Handle verification status display
+        const isVerified = frame.verified !== undefined;
+        const isApproved = frame.verified === true;
+        
+        if (isVerified) {
+            // Show verification status
+            const statusSpan = this.modalVerificationStatus.querySelector('span');
+            statusSpan.className = `inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                isApproved ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`;
+            statusSpan.textContent = isApproved ? '✓ Approved' : '✗ Rejected';
+            this.modalVerificationStatus.classList.remove('hidden');
+            
+            // Show change button, hide approve/reject buttons
+            this.modalButtons.classList.add('hidden');
+            this.modalChangeButton.classList.remove('hidden');
+        } else {
+            // Hide verification status
+            this.modalVerificationStatus.classList.add('hidden');
+            
+            // Show approve/reject buttons, hide change button
+            this.modalButtons.classList.remove('hidden');
+            this.modalChangeButton.classList.add('hidden');
+        }
+        
+        // Show modal
+        this.imageModal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+
+    hideExpandedView() {
+        this.imageModal.classList.add('hidden');
+        document.body.style.overflow = ''; // Restore scrolling
+        this.currentModalFrame = null;
+    }
+
+    async handleModalApproval(approved) {
+        if (!this.currentModalFrame) return;
+        
+        try {
+            await this.verifyFrame(this.currentModalFrame.frame_file, approved);
+            this.hideExpandedView();
+        } catch (error) {
+            console.error('Error handling modal approval:', error);
+        }
+    }
+
+    showModalVerificationOptions() {
+        if (!this.currentModalFrame) return;
+        
+        // Hide verification status and change button
+        this.modalVerificationStatus.classList.add('hidden');
+        this.modalChangeButton.classList.add('hidden');
+        
+        // Show approve/reject buttons
+        this.modalButtons.classList.remove('hidden');
+    }
+
+    enableContinueButtons() {
+        if (this.continueBtn) this.continueBtn.disabled = false;
+        if (this.proceedBtn) this.proceedBtn.disabled = false;
+    }
+
+    async checkForExistingResults() {
+        try {
+            // Check immediately if results already exist
+            const fullResultsResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            if (fullResultsResponse.ok) {
+                const fullData = await fullResultsResponse.json();
+                if (fullData.segmentation_data && fullData.segmentation_data.segments && fullData.segmentation_data.segments.length > 0) {
+                    // Results already exist - display them immediately
+                    clearInterval(this.pollingInterval);
+                    this.segmentationData = fullData.segmentation_data;
+                    this.areasData = this.segmentationData.segments || [];
+                    this.displayResults(null, true);
+                    this.setLoadingState(false);
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error('Error checking for existing results:', error);
+        }
+        return false;
+    }
+
+    async pollForSegmentationResults() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/segmentation/visualizations/${this.currentUserId}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.visualizations && data.visualizations.length > 0) {
+                    this.displayPartialResults(data.visualizations);
+                }
+            }
+
+            // Check if the full results are ready
+            const fullResultsResponse = await fetch(`${this.apiBaseUrl}/segmentation/user/${this.currentUserId}`);
+            if (fullResultsResponse.ok) {
+                const fullData = await fullResultsResponse.json();
+                if (fullData.segmentation_data && fullData.segmentation_data.segments && fullData.segmentation_data.segments.length > 0) {
+                    clearInterval(this.pollingInterval);
+                    this.segmentationData = fullData.segmentation_data;
+                    this.areasData = this.segmentationData.segments || [];
+                    this.displayResults(null, true);
+                    this.setLoadingState(false);
+                }
+            }
+        } catch (error) {
+            console.error('Polling error:', error);
+            this.showError('Failed to fetch segmentation results.');
+            this.setLoadingState(false);
+            clearInterval(this.pollingInterval);
+        }
+    }
+
+    displayPartialResults(visualizationUrls) {
+        this.setupSection.classList.add('hidden');
+        this.resultsSection.classList.remove('hidden');
+        this.segmentedImagesContainer.innerHTML = '';
+
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6';
+
+        visualizationUrls.forEach(url => {
+            const imageCard = this.createPartialImageCard(url);
+            gridContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(gridContainer);
+    }
+
+    createPartialImageCard(imageUrl) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border-2 border-gray-300 rounded-lg overflow-hidden';
+        card.innerHTML = `
+            <div class="relative">
+                <img src="${this.apiBaseUrl}${imageUrl}" alt="Segmentation in progress" class="w-full h-48 object-cover">
+                <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <p class="text-white text-lg font-semibold">Processing...</p>
+                </div>
+            </div>
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-900 capitalize">Segmenting...</h3>
+                <div class="text-xs text-gray-600 mb-3">
+                    <p>Please wait while we analyze this image.</p>
+                </div>
+            </div>
+        `;
+        return card;
     }
 
     displayResults(imagePath, isFromExtractedFrames = false) {
         this.setupSection.classList.add('hidden');
         this.resultsSection.classList.remove('hidden');
 
-        // Update summary
-        this.updateSummary();
+        // Update summary - REMOVED: summary section removed from HTML
+        // this.updateSummary();
 
-        // Display frame - handle different image sources
-        if (isFromExtractedFrames && this.segmentationData.frame_details && this.segmentationData.frame_details.length > 0) {
-            // Use the first frame that has a visualization
-            const frameWithViz = this.segmentationData.frame_details.find(f => f.visualization_url);
-            if (frameWithViz && frameWithViz.visualization_url) {
-                this.frameImage.src = frameWithViz.visualization_url;
-            } else {
-                // Fallback to first available frame
-                const firstFrame = this.areasData.find(area => area.source_frame_path);
-                if (firstFrame && firstFrame.source_frame_path) {
-                    this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${firstFrame.source_frame_path.split('/').pop()}`;
-                }
-            }
-        } else if (imagePath) {
-            // Single image segmentation - check if it's already a full URL path
-            if (imagePath.startsWith('/static/')) {
-                this.frameImage.src = imagePath;
-            } else {
-                this.frameImage.src = `${this.apiBaseUrl}/static/extracted_frames/${imagePath.split('/').pop()}`;
-            }
-        } else if (this.segmentationData.image_path) {
-            // Use image_path from segmentation response (could be visualization)
-            console.log('Using image_path from response:', this.segmentationData.image_path);
-            this.frameImage.src = this.segmentationData.image_path;
-        } else {
-            // Try to use visualization URL from segmentation data
-            if (this.segmentationData.visualization_url) {
-                console.log('Using visualization URL:', this.segmentationData.visualization_url);
-                this.frameImage.src = this.segmentationData.visualization_url;
-            } else {
-                console.log('No visualization URL found in segmentation data:', this.segmentationData);
-            }
-        }
+        // Display segmented images instead of single frame
+        this.displaySegmentedImages();
 
-        // Image will display directly without overlays
-
-        // Display areas grid
-        this.displayAreasGrid();
-
-        // Enable continue button if areas are detected
+        // Enable continue/proceed buttons if areas are detected
         if (this.areasData.length > 0) {
             this.continueBtn.disabled = false;
+            this.proceedBtn.disabled = false;
         }
     }
 
-    updateSummary() {
-        const areaTypesSet = new Set(this.areasData.map(area => area.area_type || area.label || 'unknown'));
-        const totalArea = this.areasData.reduce((sum, area) => sum + (area.dimensions?.area || 0), 0);
-
-        this.totalAreas.textContent = this.areasData.length;
-        this.verifiedAreasCount.textContent = this.verifiedAreas.size;
-        this.areaTypes.textContent = areaTypesSet.size;
-        this.totalAreaSize.textContent = totalArea.toFixed(1);
-    }
+    // updateSummary() - REMOVED: summary section removed from HTML
+    // updateSummary() {
+    //     const areaTypesSet = new Set(this.areasData.map(area => area.area_type || area.label || 'unknown'));
+    //     const totalArea = this.areasData.reduce((sum, area) => sum + (area.dimensions?.area || 0), 0);
+    //
+    //     this.totalAreas.textContent = this.areasData.length;
+    //     this.verifiedAreasCount.textContent = this.verifiedAreas.size;
+    //     this.areaTypes.textContent = areaTypesSet.size;
+    //     this.totalAreaSize.textContent = totalArea.toFixed(1);
+    // }
 
     drawSegmentationOverlay() {
         const canvas = this.segmentationOverlay;
@@ -468,76 +993,271 @@ class AreaSegmentationUI {
         });
     }
 
-    displayAreasGrid() {
-        this.areasGrid.innerHTML = '';
+    displaySegmentedImages() {
+        this.segmentedImagesContainer.innerHTML = '';
 
         const filteredAreas = this.getFilteredAreas();
+        const viewMode = this.viewMode.value;
 
-        filteredAreas.forEach((area, index) => {
-            const areaCard = this.createAreaCard(area, index);
-            this.areasGrid.appendChild(areaCard);
-        });
+        if (viewMode === 'grid') {
+            this.displayGridView(filteredAreas);
+        } else {
+            this.displayListView(filteredAreas);
+        }
     }
 
-    createAreaCard(area, index) {
+    displayGridView(areas) {
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6';
+
+        areas.forEach((area, index) => {
+            const imageCard = this.createSegmentedImageCard(area, index);
+            gridContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(gridContainer);
+    }
+
+    displayListView(areas) {
+        const listContainer = document.createElement('div');
+        listContainer.className = 'space-y-4';
+
+        areas.forEach((area, index) => {
+            const imageCard = this.createSegmentedImageCard(area, index, true);
+            listContainer.appendChild(imageCard);
+        });
+
+        this.segmentedImagesContainer.appendChild(listContainer);
+    }
+
+    createSegmentedImageCard(area, index, isListView = false) {
         const colors = [
-            'border-red-200 bg-red-50', 'border-orange-200 bg-orange-50', 
-            'border-yellow-200 bg-yellow-50', 'border-green-200 bg-green-50',
-            'border-cyan-200 bg-cyan-50', 'border-blue-200 bg-blue-50', 
-            'border-purple-200 bg-purple-50', 'border-pink-200 bg-pink-50'
+            'border-red-300', 'border-orange-300', 'border-yellow-300', 'border-green-300',
+            'border-cyan-300', 'border-blue-300', 'border-purple-300', 'border-pink-300'
         ];
 
         const isVerified = this.verifiedAreas.has(area.area_id);
-        const cardColor = colors[index % colors.length];
-
+        const borderColor = colors[index % colors.length];
+        
         const card = document.createElement('div');
-        card.className = `area-card border-2 ${cardColor} rounded-lg p-4 cursor-pointer transition-all ${isVerified ? 'ring-2 ring-green-500' : ''}`;
+        const cardClasses = isListView 
+            ? `segmented-image-card flex bg-white border-2 ${borderColor} rounded-lg overflow-hidden ${isVerified ? 'ring-2 ring-green-500' : ''}` 
+            : `segmented-image-card bg-white border-2 ${borderColor} rounded-lg overflow-hidden ${isVerified ? 'ring-2 ring-green-500' : ''}`;
+        
+        card.className = cardClasses;
         
         const areaType = area.area_type || area.label || 'unknown';
         const confidence = area.confidence || 0;
         
-        card.innerHTML = `
-            <div class="flex justify-between items-start mb-3">
-                <div class="flex-1">
-                    <h3 class="font-medium text-gray-900 capitalize mb-1">${areaType.replace('_', ' ')}</h3>
-                    <p class="text-sm text-gray-600">Confidence: ${(confidence * 100).toFixed(1)}%</p>
+        // Get image source - prefer visualization if available
+        let imageSrc = this.getImageSourceForArea(area);
+        
+        if (isListView) {
+            card.innerHTML = `
+                <div class="w-48 h-32 flex-shrink-0 relative">
+                    <img src="${imageSrc}" alt="${areaType} segment" class="w-full h-full object-cover">
+                    <canvas class="absolute inset-0 w-full h-full pointer-events-none" data-area-id="${area.area_id}"></canvas>
+                    ${isVerified ? '<div class="verification-badge bg-green-500 text-white">✓ Verified</div>' : '<div class="verification-badge bg-gray-500 text-white">Unverified</div>'}
                 </div>
-                ${isVerified ? '<div class="text-green-600"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg></div>' : ''}
-            </div>
+                <div class="flex-1 p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-lg font-semibold text-gray-900 capitalize">${areaType.replace('_', ' ')}</h3>
+                        <span class="text-sm text-gray-500">${(confidence * 100).toFixed(1)}% confidence</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                        <div><span class="font-medium">Type:</span> ${areaType}</div>
+                        <div><span class="font-medium">Source:</span> ${area.source_frame || 'N/A'}</div>
+                        <div><span class="font-medium">Detection:</span> ${area.source || 'Replicate'}</div>
+                        <div><span class="font-medium">Area ID:</span> ${area.area_id}</div>
+                    </div>
+                    
+                    <div class="inline-verification">
+                        ${!isVerified ? `
+                            <button class="verify-btn bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                                ✓ Verify
+                            </button>
+                            <button class="reject-btn bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+                                ✗ Reject
+                            </button>
+                        ` : `
+                            <div class="flex items-center text-green-600">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span class="font-medium">Verified</span>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        } else {
+            card.innerHTML = `
+                <div class="relative">
+                    <img src="${imageSrc}" alt="${areaType} segment" class="w-full h-48 object-cover">
+                    <canvas class="absolute inset-0 w-full h-full pointer-events-none" data-area-id="${area.area_id}"></canvas>
+                    ${isVerified ? '<div class="verification-badge bg-green-500 text-white">✓ Verified</div>' : '<div class="verification-badge bg-gray-500 text-white">Unverified</div>'}
+                </div>
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-semibold text-gray-900 capitalize">${areaType.replace('_', ' ')}</h3>
+                        <span class="text-xs text-gray-500">${(confidence * 100).toFixed(1)}%</span>
+                    </div>
+                    
+                    <div class="text-xs text-gray-600 mb-3">
+                        <div>Source: ${area.source_frame || 'N/A'}</div>
+                        <div>ID: ${area.area_id}</div>
+                    </div>
+                    
+                    <div class="inline-verification">
+                        ${!isVerified ? `
+                            <button class="verify-btn bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                                ✓ Verify
+                            </button>
+                            <button class="reject-btn bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
+                                ✗ Reject
+                            </button>
+                        ` : `
+                            <div class="flex items-center text-green-600 text-sm">
+                                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span>Verified</span>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add event listeners for verification buttons
+        if (!isVerified) {
+            const verifyBtn = card.querySelector('.verify-btn');
+            const rejectBtn = card.querySelector('.reject-btn');
             
-            <div class="space-y-1 text-sm text-gray-600">
-                <div>Type: ${areaType}</div>
-                <div>Source: ${area.source_frame || 'N/A'}</div>
-                <div>Detection: ${area.source || 'N/A'}</div>
-            </div>
-            
-            <div class="mt-4 flex space-x-2">
-                <button class="verify-btn flex-1 text-xs px-3 py-2 rounded ${isVerified ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors">
-                    ${isVerified ? '✓ Verified' : 'Verify'}
-                </button>
-                <button class="details-btn text-xs px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
-                    Details
-                </button>
-            </div>
-        `;
-
-        // Add event listeners
-        const verifyBtn = card.querySelector('.verify-btn');
-        const detailsBtn = card.querySelector('.details-btn');
-
-        verifyBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!isVerified) {
-                this.openVerificationModal(area);
+            if (verifyBtn) {
+                verifyBtn.addEventListener('click', () => this.verifyArea(area.area_id, true));
             }
-        });
-
-        detailsBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.openVerificationModal(area);
-        });
-
+            
+            if (rejectBtn) {
+                rejectBtn.addEventListener('click', () => this.verifyArea(area.area_id, false));
+            }
+        }
+        
+        // Draw segmentation overlay on the canvas after the image loads
+        const img = card.querySelector('img');
+        const canvas = card.querySelector('canvas');
+        
+        if (img && canvas) {
+            img.onload = () => {
+                this.drawSegmentOverlayOnCard(canvas, area, img);
+            };
+        }
+        
         return card;
+    }
+
+    getImageSourceForArea(area) {
+        // Try to get the best image source for this area
+        
+        // If we have frame details with visualization URLs, use that
+        if (this.segmentationData.frame_details) {
+            const frameDetail = this.segmentationData.frame_details.find(f => 
+                f.frame_file === area.source_frame && f.visualization_url
+            );
+            if (frameDetail && frameDetail.visualization_url) {
+                return frameDetail.visualization_url;
+            }
+        }
+        
+        // If we have a visualization URL in segmentation data, use that
+        if (this.segmentationData.visualization_url) {
+            return this.segmentationData.visualization_url;
+        }
+        
+        // If we have source frame path, construct the URL with user_id
+        if (area.source_frame_path) {
+            return `${this.apiBaseUrl}/static/face_recognition/${this.currentUserId}/extracted_frames/${area.source_frame_path.split('/').pop()}`;
+        }
+        
+        // If we have source frame name, construct the URL with user_id
+        if (area.source_frame) {
+            return `${this.apiBaseUrl}/static/face_recognition/${this.currentUserId}/extracted_frames/${area.source_frame}`;
+        }
+        
+        // Fallback to image path from segmentation data
+        if (this.segmentationData.image_path) {
+            return this.segmentationData.image_path;
+        }
+        
+        // Last resort - empty image
+        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg==';
+    }
+
+    drawSegmentOverlayOnCard(canvas, area, img) {
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size to match image
+        canvas.width = img.clientWidth;
+        canvas.height = img.clientHeight;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Calculate scale factors
+        const scaleX = canvas.width / img.naturalWidth;
+        const scaleY = canvas.height / img.naturalHeight;
+        
+        // Set drawing style
+        ctx.strokeStyle = '#ef4444';
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.lineWidth = 2;
+        
+        // Draw segmentation area
+        if (area.bbox) {
+            // Draw bounding box
+            const x1 = area.bbox.x1 * scaleX;
+            const y1 = area.bbox.y1 * scaleY;
+            const x2 = area.bbox.x2 * scaleX;
+            const y2 = area.bbox.y2 * scaleY;
+            
+            ctx.beginPath();
+            ctx.rect(x1, y1, x2 - x1, y2 - y1);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Add label
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
+            
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+        } else if (area.polygon && area.polygon.length > 0) {
+            // Draw polygon
+            ctx.beginPath();
+            area.polygon.forEach((point, i) => {
+                const x = point[0] * scaleX;
+                const y = point[1] * scaleY;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Add label
+            const centerX = area.polygon.reduce((sum, p) => sum + p[0], 0) / area.polygon.length * scaleX;
+            const centerY = area.polygon.reduce((sum, p) => sum + p[1], 0) / area.polygon.length * scaleY;
+            
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((area.area_type || area.label || 'unknown').replace('_', ' ').toUpperCase(), centerX, centerY);
+        }
     }
 
     getFilteredAreas() {
@@ -564,87 +1284,10 @@ class AreaSegmentationUI {
     }
 
     applyFilters() {
-        this.displayAreasGrid();
+        this.displaySegmentedImages();
     }
 
-    openVerificationModal(area) {
-        this.currentAreaForVerification = area;
-        
-        const areaType = area.area_type || area.label || 'unknown';
-        const confidence = area.confidence || 0;
-        
-        this.modalAreaType.textContent = areaType.replace('_', ' ');
-        this.modalConfidence.textContent = (confidence * 100).toFixed(1) + '%';
-        this.modalDimensions.textContent = area.bbox ? 
-            `${area.bbox.x2 - area.bbox.x1}px × ${area.bbox.y2 - area.bbox.y1}px` : 
-            `${area.dimensions?.width?.toFixed(1) || 'N/A'}m × ${area.dimensions?.height?.toFixed(1) || 'N/A'}m`;
-        this.modalAreaSize.textContent = area.dimensions?.area?.toFixed(1) + 'm²' || 'N/A';
-        
-        // Set the same frame image
-        this.modalAreaImage.src = this.frameImage.src;
-        this.modalAreaImage.onload = () => {
-            this.drawModalOverlay(area);
-        };
-
-        this.modal.classList.remove('hidden');
-    }
-
-    drawModalOverlay(area) {
-        const canvas = this.modalOverlayCanvas;
-        const ctx = canvas.getContext('2d');
-        const img = this.modalAreaImage;
-
-        canvas.width = img.clientWidth;
-        canvas.height = img.clientHeight;
-        canvas.style.width = img.clientWidth + 'px';
-        canvas.style.height = img.clientHeight + 'px';
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const scaleX = canvas.width / img.naturalWidth;
-        const scaleY = canvas.height / img.naturalHeight;
-
-        ctx.strokeStyle = '#ef4444';
-        ctx.fillStyle = '#ef444440';
-        ctx.lineWidth = 3;
-
-        if (area.bbox) {
-            // Draw bounding box for Replicate API results
-            const x1 = area.bbox.x1 * scaleX;
-            const y1 = area.bbox.y1 * scaleY;
-            const x2 = area.bbox.x2 * scaleX;
-            const y2 = area.bbox.y2 * scaleY;
-
-            ctx.beginPath();
-            ctx.rect(x1, y1, x2 - x1, y2 - y1);
-            ctx.fill();
-            ctx.stroke();
-        } else if (area.polygon && area.polygon.length > 0) {
-            // Draw polygon for other API results
-            ctx.beginPath();
-            area.polygon.forEach((point, i) => {
-                const x = point[0] * scaleX;
-                const y = point[1] * scaleY;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-    }
-
-    closeModal() {
-        this.modal.classList.add('hidden');
-        this.currentAreaForVerification = null;
-    }
-
-    async verifyCurrentArea(approved) {
-        if (!this.currentAreaForVerification) return;
-
+    async verifyArea(areaId, approved) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/segmentation/segment/verify`, {
                 method: 'POST',
@@ -652,7 +1295,7 @@ class AreaSegmentationUI {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    area_id: this.currentAreaForVerification.area_id,
+                    area_id: areaId,
                     user_id: this.currentUserId,
                     approved: approved
                 })
@@ -665,21 +1308,32 @@ class AreaSegmentationUI {
             const result = await response.json();
 
             if (approved) {
-                this.verifiedAreas.add(this.currentAreaForVerification.area_id);
+                this.verifiedAreas.add(areaId);
             } else {
                 // Remove from areas data if rejected
-                this.areasData = this.areasData.filter(area => area.area_id !== this.currentAreaForVerification.area_id);
+                this.areasData = this.areasData.filter(area => area.area_id !== areaId);
             }
 
-            this.updateSummary();
-            this.displayAreasGrid();
-            this.closeModal();
+            // this.updateSummary(); // REMOVED: summary section removed from HTML
+            this.displaySegmentedImages();
+            
+            // Update proceed button state
+            this.updateProceedButtonState();
 
         } catch (error) {
             console.error('Verification error:', error);
             this.showError(error.message);
         }
     }
+    
+    updateProceedButtonState() {
+        const hasVerifiedAreas = this.verifiedAreas.size > 0;
+        this.proceedBtn.disabled = !hasVerifiedAreas;
+        this.continueBtn.disabled = !hasVerifiedAreas;
+    }
+
+
+
 
     async verifyAllAreas() {
         const unverifiedAreas = this.areasData.filter(area => !this.verifiedAreas.has(area.area_id));
@@ -704,8 +1358,11 @@ class AreaSegmentationUI {
             }
         }
 
-        this.updateSummary();
-        this.displayAreasGrid();
+        // this.updateSummary(); // REMOVED: summary section removed from HTML
+        this.displaySegmentedImages();
+        
+        // Update proceed button state
+        this.updateProceedButtonState();
     }
 
     showOriginalFrame() {
@@ -749,16 +1406,23 @@ class AreaSegmentationUI {
     }
 
     navigateToFaceRecognition() {
-        // Navigate back to face recognition with current parameters
+        // Cleanup WebSocket connection before navigating
+        this.disconnectWebSocket();
+        
+        // Navigate back to face recognition with current parameters and auto-start
         const params = new URLSearchParams({
             video_path: this.currentVideoPath || '',
             user_id: this.currentUserId || '',
-            service_url: this.apiBaseUrl
+            service_url: this.apiBaseUrl,
+            auto_start: 'true'
         });
         window.location.href = `../face-recognition/index.html?${params.toString()}`;
     }
 
     navigateToPermissions() {
+        // Cleanup WebSocket connection before navigating
+        this.disconnectWebSocket();
+        
         // Navigate to permissions page with current data
         const params = new URLSearchParams({
             video_path: this.currentVideoPath || '',

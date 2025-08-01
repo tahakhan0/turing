@@ -45,10 +45,10 @@
                     </svg>
                 </div>
                 <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    Camera Access Required
+                    Connect Your Cameras
                 </h2>
                 <p class="mt-2 text-center text-sm text-gray-600">
-                    Alan needs camera access to begin identifying people, packages, and details
+                    To bring your home to life, Alan needs to see what you see. Granting access lets Alan recognize people and understand your space.
                 </p>
             </div>
 
@@ -61,7 +61,7 @@
                     </div>
                     <div class="ml-3">
                         <p class="text-sm text-blue-800">
-                            Your privacy is protected. Camera access is only used for AI analysis and no footage is stored permanently.
+                            Your privacy is our priority. Alan analyzes footage in real-time and doesn't store it. Your home remains your own.
                         </p>
                     </div>
                 </div>
@@ -69,6 +69,25 @@
 
             <form id="cameraAuthForm" class="mt-8 space-y-6">
                 <div class="space-y-4">
+                    <fieldset class="mb-6">
+                        <legend class="block text-sm font-medium text-gray-700 mb-2">Choose Camera Type</legend>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <input type="radio" id="camera_type_rtsp" name="camera_type" value="rtsp" class="peer sr-only" checked>
+                                <label for="camera_type_rtsp" class="flex items-center justify-center w-full p-4 border border-gray-300 rounded-md cursor-pointer transition-colors hover:bg-gray-100 peer-checked:bg-brand-blue peer-checked:text-white peer-checked:border-brand-blue">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                                    <span>RTSP Server</span>
+                                </label>
+                            </div>
+                            <div>
+                                <input type="radio" id="camera_type_ring" name="camera_type" value="ring" class="peer sr-only">
+                                <label for="camera_type_ring" class="flex items-center justify-center w-full p-4 border border-gray-300 rounded-md cursor-pointer transition-colors hover:bg-gray-100 peer-checked:bg-brand-blue peer-checked:text-white peer-checked:border-brand-blue">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                    <span>Ring camera</span>
+                                </label>
+                            </div>
+                        </div>
+                    </fieldset>
                     <div>
                         <label for="auth_email" class="block text-sm font-medium text-gray-700">Email address</label>
                         <input 
