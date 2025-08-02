@@ -5,392 +5,223 @@ class MonitoringDashboard {
         this.apiBaseUrl = 'http://localhost:8000';
         this.websocket = null;
         this.userId = null;
-        this.isConnected = false;
-        
+        this.isLiveMonitoring = false;
+
         this.initializeElements();
-        this.attachEventListeners();
-        this.loadFromLocalStorage();
+        this.loadFromUrlParams();
     }
 
     initializeElements() {
-        // Configuration elements
-        this.serviceUrlInput = document.getElementById('service-url');
-        this.userIdInput = document.getElementById('user-id');
-        this.connectBtn = document.getElementById('connect-btn');
-        this.testNotificationBtn = document.getElementById('test-notification-btn');
-        this.refreshStatusBtn = document.getElementById('refresh-status-btn');
+        // Status
+        this.websocketStatusDot = document.getElementById('websocket-status-dot');
+        this.websocketStatusText = document.getElementById('websocket-status-text');
 
-        // Status elements
-        this.websocketStatus = document.getElementById('websocket-status');
-        this.websocketText = document.getElementById('websocket-text');
-        this.monitoringStatus = document.getElementById('monitoring-status');
-        this.monitoringText = document.getElementById('monitoring-text');
-        this.geminiStatus = document.getElementById('gemini-status');
-        this.geminiText = document.getElementById('gemini-text');
-        this.segmentsStatus = document.getElementById('segments-status');
-        this.segmentsText = document.getElementById('segments-text');
+        // Detections
+        this.peopleCount = document.getElementById('people-count');
+        this.knownCount = document.getElementById('known-count');
+        this.violationsCount = document.getElementById('violations-count');
 
-        // Frame analysis elements
-        this.frameUpload = document.getElementById('frame-upload');
-        this.analyzeFrameBtn = document.getElementById('analyze-frame-btn');
-        this.analyzeWithNotificationsBtn = document.getElementById('analyze-with-notifications-btn');
-        this.analyzeWithGeminiBtn = document.getElementById('analyze-with-gemini-btn');
-        this.analysisResults = document.getElementById('analysis-results');
-        this.analysisOutput = document.getElementById('analysis-output');
-
-        // Notifications
+        // Event Log
         this.notificationsContainer = document.getElementById('notifications-container');
-        this.toastContainer = document.getElementById('toast-container');
+        
+        // Video Stream
+        this.videoStream = document.getElementById('video-stream');
     }
 
-    attachEventListeners() {
-        this.connectBtn.addEventListener('click', () => this.toggleConnection());
-        this.testNotificationBtn.addEventListener('click', () => this.sendTestNotification());
-        this.refreshStatusBtn.addEventListener('click', () => this.refreshSystemStatus());
-
-        this.frameUpload.addEventListener('change', () => this.onFrameSelected());
-        this.analyzeFrameBtn.addEventListener('click', () => this.analyzeFrame());
-        this.analyzeWithNotificationsBtn.addEventListener('click', () => this.analyzeFrameWithNotifications());
-        this.analyzeWithGeminiBtn.addEventListener('click', () => this.analyzeFrameWithGemini());
-
-        this.serviceUrlInput.addEventListener('change', () => this.saveToLocalStorage());
-        this.userIdInput.addEventListener('change', () => this.saveToLocalStorage());
-    }
-
-    loadFromLocalStorage() {
-        const savedServiceUrl = localStorage.getItem('turing-service-url');
-        const savedUserId = localStorage.getItem('turing-user-id');
-
-        if (savedServiceUrl) {
-            this.serviceUrlInput.value = savedServiceUrl;
-            this.apiBaseUrl = savedServiceUrl;
+    loadFromUrlParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        this.userId = urlParams.get('user_id');
+        const serviceUrl = urlParams.get('service_url');
+        
+        if (serviceUrl) {
+            this.apiBaseUrl = serviceUrl;
         }
-        if (savedUserId) {
-            this.userIdInput.value = savedUserId;
-        }
-    }
 
-    saveToLocalStorage() {
-        localStorage.setItem('turing-service-url', this.serviceUrlInput.value);
-        localStorage.setItem('turing-user-id', this.userIdInput.value);
-        this.apiBaseUrl = this.serviceUrlInput.value;
-    }
-
-    async toggleConnection() {
-        if (this.isConnected) {
-            this.disconnect();
+        if (this.userId) {
+            this.startLiveMonitoring();
         } else {
-            await this.connect();
+            alert('User ID not found in URL. Please provide a user_id parameter.');
         }
     }
 
-    async connect() {
-        this.userId = this.userIdInput.value.trim();
-        if (!this.userId) {
-            this.showToast('Please enter a User ID', 'error');
+    startLiveMonitoring() {
+        if (this.isLiveMonitoring) return;
+
+        const wsUrl = `${this.apiBaseUrl.replace('http', 'ws')}/monitoring/ws/live_feed/${this.userId}`;
+        this.websocket = new WebSocket(wsUrl);
+
+        this.websocket.onopen = () => {
+            this.isLiveMonitoring = true;
+            this.updateConnectionStatus(true);
+            this.notificationsContainer.innerHTML = ''; // Clear previous logs
+            this.initializeCanvas(); // Initialize canvas when connection opens
+        };
+
+        this.websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.image) {
+                this.updateVideoCanvas(data.image);
+            }
+            if (data.notifications) {
+                console.log('Analysis result:', data.notifications);
+                this.handleLiveFeedData(data.notifications);
+            }
+        };
+
+        this.websocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            this.updateConnectionStatus(false);
+        };
+
+        this.websocket.onclose = () => {
+            this.isLiveMonitoring = false;
+            this.updateConnectionStatus(false);
+        };
+    }
+
+    updateConnectionStatus(connected) {
+        this.isLiveMonitoring = connected;
+        if (connected) {
+            this.websocketStatusDot.classList.remove('bg-red-400');
+            this.websocketStatusDot.classList.add('bg-green-500');
+            this.websocketStatusText.textContent = 'Connected';
+        } else {
+            this.websocketStatusDot.classList.remove('bg-green-500');
+            this.websocketStatusDot.classList.add('bg-red-400');
+            this.websocketStatusText.textContent = 'Disconnected';
+        }
+    }
+
+    initializeCanvas() {
+        const canvas = this.videoStream;
+        const container = canvas.parentElement;
+        const containerRect = container.getBoundingClientRect();
+        
+        if (containerRect.width === 0 || containerRect.height === 0) {
+            canvas.width = 640;
+            canvas.height = 360;
+        } else {
+            canvas.width = containerRect.width;
+            canvas.height = containerRect.height;
+        }
+        
+        // Test canvas visibility by drawing a red rectangle
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'red';
+        ctx.fillRect(0, 0, 100, 100);
+        
+        console.log('Canvas initialized with dimensions:', canvas.width, 'x', canvas.height);
+        console.log('Canvas element:', canvas);
+        console.log('Canvas style:', window.getComputedStyle(canvas));
+    }
+
+    updateVideoCanvas(base64Image) {
+        const canvas = this.videoStream;
+        if (!canvas) {
+            console.error('Canvas element not found');
             return;
         }
-
-        this.saveToLocalStorage();
         
-        try {
-            // Test API connection first
-            await this.refreshSystemStatus();
-
-            // Connect WebSocket
-            const wsUrl = this.apiBaseUrl.replace('http', 'ws') + `/monitoring/notifications/${this.userId}`;
-            this.websocket = new WebSocket(wsUrl);
-
-            this.websocket.onopen = () => {
-                this.isConnected = true;
-                this.updateConnectionUI();
-                this.showToast('Connected successfully', 'success');
-                this.updateWebSocketStatus('connected');
-            };
-
-            this.websocket.onmessage = (event) => {
-                try {
-                    const notification = JSON.parse(event.data);
-                    this.handleNotification(notification);
-                } catch (e) {
-                    console.error('Failed to parse notification:', e);
-                }
-            };
-
-            this.websocket.onclose = () => {
-                this.isConnected = false;
-                this.updateConnectionUI();
-                this.updateWebSocketStatus('disconnected');
-                if (this.websocket !== null) {
-                    this.showToast('Connection lost', 'error');
-                }
-            };
-
-            this.websocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.showToast('Connection error', 'error');
-                this.updateWebSocketStatus('error');
-            };
-
-        } catch (error) {
-            console.error('Connection failed:', error);
-            this.showToast('Failed to connect: ' + error.message, 'error');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            console.error('Failed to get 2D context');
+            return;
         }
-    }
-
-    disconnect() {
-        if (this.websocket) {
-            this.websocket.close();
-            this.websocket = null;
-        }
-        this.isConnected = false;
-        this.updateConnectionUI();
-        this.updateWebSocketStatus('disconnected');
-        this.showToast('Disconnected', 'info');
-    }
-
-    updateConnectionUI() {
-        if (this.isConnected) {
-            this.connectBtn.textContent = 'Disconnect';
-            this.connectBtn.className = 'px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700';
-            this.testNotificationBtn.disabled = false;
-            this.analyzeFrameBtn.disabled = !this.frameUpload.files.length;
-            this.analyzeWithNotificationsBtn.disabled = !this.frameUpload.files.length;
-            this.analyzeWithGeminiBtn.disabled = !this.frameUpload.files.length;
-        } else {
-            this.connectBtn.textContent = 'Connect';
-            this.connectBtn.className = 'px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700';
-            this.testNotificationBtn.disabled = true;
-            this.analyzeFrameBtn.disabled = true;
-            this.analyzeWithNotificationsBtn.disabled = true;
-            this.analyzeWithGeminiBtn.disabled = true;
-        }
-    }
-
-    updateWebSocketStatus(status) {
-        const statusColors = {
-            connected: 'bg-green-500',
-            disconnected: 'bg-gray-400',
-            error: 'bg-red-500'
+        
+        // Create an image from the base64 data
+        const img = new Image();
+        img.onload = () => {
+            // Clear the entire canvas first
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw the image to fill the entire canvas
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Force a repaint
+            canvas.style.display = 'none';
+            canvas.offsetHeight; // Trigger reflow
+            canvas.style.display = '';
+            
+            console.log('Image updated on canvas');
         };
-
-        const statusTexts = {
-            connected: 'Connected',
-            disconnected: 'Disconnected',
-            error: 'Error'
+        img.onerror = (error) => {
+            console.error('Image loading failed:', error);
         };
-
-        this.websocketStatus.className = `status-dot ${statusColors[status]} mx-auto mb-2`;
-        this.websocketText.textContent = statusTexts[status];
+        img.src = `data:image/jpeg;base64,${base64Image}`;
     }
 
-    async refreshSystemStatus() {
-        try {
-            // Check monitoring service
-            const monitoringResponse = await fetch(`${this.apiBaseUrl}/monitoring/health`);
-            if (monitoringResponse.ok) {
-                const monitoringData = await monitoringResponse.json();
-                this.monitoringStatus.className = 'status-dot bg-green-500 mx-auto mb-2';
-                this.monitoringText.textContent = 'Online';
+    handleLiveFeedData(data) {
+        if (!data) return; // Add this check to prevent the error
 
-                // Update Gemini status
-                if (monitoringData.gemini_analysis) {
-                    const geminiEnabled = monitoringData.gemini_analysis.enabled;
-                    this.geminiStatus.className = `status-dot ${geminiEnabled ? 'bg-green-500' : 'bg-yellow-500'} mx-auto mb-2`;
-                    this.geminiText.textContent = geminiEnabled ? 'Available' : 'Not configured';
-                }
-            } else {
-                this.monitoringStatus.className = 'status-dot bg-red-500 mx-auto mb-2';
-                this.monitoringText.textContent = 'Error';
-            }
-
-            // Check user segments
-            if (this.userId) {
-                const segmentsResponse = await fetch(`${this.apiBaseUrl}/monitoring/segments/user/${this.userId}`);
-                if (segmentsResponse.ok) {
-                    const segmentsData = await segmentsResponse.json();
-                    const segmentCount = segmentsData.total_segments || 0;
-                    this.segmentsStatus.className = `status-dot ${segmentCount > 0 ? 'bg-green-500' : 'bg-yellow-500'} mx-auto mb-2`;
-                    this.segmentsText.textContent = `${segmentCount} defined`;
-                }
-            }
-
-        } catch (error) {
-            console.error('Status check failed:', error);
-            this.monitoringStatus.className = 'status-dot bg-red-500 mx-auto mb-2';
-            this.monitoringText.textContent = 'Offline';
-        }
-    }
-
-    async sendTestNotification() {
-        if (!this.userId) return;
-
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/monitoring/notify/test/${this.userId}`, {
-                method: 'POST'
+        let violationCount = 0;
+        if (data.violations) {
+            data.violations.forEach(v => {
+                this.addNotification(v, 'high');
+                violationCount++;
             });
-
-            if (response.ok) {
-                this.showToast('Test notification sent', 'success');
-            } else {
-                this.showToast('Failed to send test notification', 'error');
-            }
-        } catch (error) {
-            this.showToast('Test notification failed: ' + error.message, 'error');
         }
-    }
-
-    onFrameSelected() {
-        const hasFile = this.frameUpload.files.length > 0;
-        if (this.isConnected) {
-            this.analyzeFrameBtn.disabled = !hasFile;
-            this.analyzeWithNotificationsBtn.disabled = !hasFile;
-            this.analyzeWithGeminiBtn.disabled = !hasFile;
-        }
-    }
-
-    async analyzeFrame() {
-        await this.performFrameAnalysis('/monitoring/analyze/frame');
-    }
-
-    async analyzeFrameWithNotifications() {
-        await this.performFrameAnalysis('/monitoring/analyze/frame/with-notifications');
-    }
-
-    async analyzeFrameWithGemini() {
-        await this.performFrameAnalysis('/monitoring/analyze/frame/gemini');
-    }
-
-    async performFrameAnalysis(endpoint) {
-        if (!this.frameUpload.files.length || !this.userId) return;
-
-        const formData = new FormData();
-        formData.append('file', this.frameUpload.files[0]);
-
-        try {
-            this.showAnalysisLoading();
-
-            const response = await fetch(`${this.apiBaseUrl}${endpoint}?user_id=${this.userId}`, {
-                method: 'POST',
-                body: formData
+        if (data.unknown_detections) {
+            data.unknown_detections.forEach(d => {
+                // Unknown persons are high-severity since non-residents aren't allowed
+                const severity = d.type === 'unauthorized_unknown_person' ? 'high' : 'medium';
+                this.addNotification(d, severity);
             });
-
-            if (!response.ok) {
-                throw new Error(`Analysis failed: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-            this.displayAnalysisResults(result);
-            this.showToast('Analysis completed', 'success');
-
-        } catch (error) {
-            console.error('Analysis failed:', error);
-            this.showToast('Analysis failed: ' + error.message, 'error');
-            this.hideAnalysisResults();
-        }
-    }
-
-    showAnalysisLoading() {
-        this.analysisResults.classList.remove('hidden');
-        this.analysisOutput.textContent = 'Analyzing frame...';
-    }
-
-    displayAnalysisResults(result) {
-        this.analysisResults.classList.remove('hidden');
-        this.analysisOutput.textContent = JSON.stringify(result, null, 2);
-    }
-
-    hideAnalysisResults() {
-        this.analysisResults.classList.add('hidden');
-    }
-
-    handleNotification(notification) {
-        console.log('Received notification:', notification);
-        
-        // Add to notifications container
-        this.addNotificationToContainer(notification);
-        
-        // Show toast
-        const message = notification.title || 'New notification';
-        const type = notification.severity === 'high' ? 'error' : 
-                    notification.severity === 'medium' ? 'warning' : 'info';
-        this.showToast(message, type);
-    }
-
-    addNotificationToContainer(notification) {
-        // Clear "no notifications" message
-        if (this.notificationsContainer.children.length === 1 && 
-            this.notificationsContainer.children[0].textContent.includes('No notifications')) {
-            this.notificationsContainer.innerHTML = '';
         }
 
+        // Total people detected
+        const totalPeople = (data.violations?.length || 0) + (data.unknown_detections?.length || 0);
+        this.peopleCount.textContent = totalPeople;
+        
+        // Known people (violations are from known people)
+        this.knownCount.textContent = data.violations?.length || 0;
+        
+        // Actual violations (not just known people)
+        this.violationsCount.textContent = violationCount;
+    }
+
+    addNotification(item, severity) {
         const notificationElement = document.createElement('div');
-        notificationElement.className = `border rounded-lg p-4 ${this.getNotificationBorderColor(notification.severity)}`;
-        
-        const timestamp = new Date(notification.timestamp).toLocaleTimeString();
-        
-        notificationElement.innerHTML = `
-            <div class="flex justify-between items-start mb-2">
-                <h3 class="font-medium text-gray-900">${notification.title}</h3>
-                <span class="text-xs text-gray-500">${timestamp}</span>
+        notificationElement.className = `notification-item p-3 rounded-md border-l-4`
+        if (severity === 'high') {
+            notificationElement.classList.add('border-red-500', 'bg-red-50');
+        } else if (severity === 'medium') {
+            notificationElement.classList.add('border-yellow-500', 'bg-yellow-50');
+        } else {
+            notificationElement.classList.add('border-blue-500', 'bg-blue-50');
+        }
+
+        const timestamp = new Date(item.timestamp).toLocaleTimeString();
+        const person = item.person_name || 'Unknown';
+        const area = item.segment?.area_type || 'N/A';
+        const geminiAnalysis = item.gemini_analysis;
+        const violationReason = item.violation_reason;
+
+        // Create notification content
+        let content = `
+            <div class="flex justify-between items-center text-xs">
+                <p class="font-bold text-gray-800">${person}</p>
+                <p class="text-gray-500">${timestamp}</p>
             </div>
-            <p class="text-sm text-gray-700 mb-3">${notification.message}</p>
-            ${notification.data?.analysis_summary ? 
-                `<div class="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                    <strong>AI Analysis:</strong> ${notification.data.analysis_summary}
-                </div>` : ''
-            }
-            ${notification.data?.frame_image_url ? 
-                `<div class="mt-2">
-                    <img src="${notification.data.frame_image_url}" alt="Detection frame" class="max-w-xs rounded border">
-                </div>` : ''
-            }
+            <p class="text-xs text-gray-600">Detected in: ${area}</p>
         `;
 
-        this.notificationsContainer.insertBefore(notificationElement, this.notificationsContainer.firstChild);
-
-        // Limit to 20 notifications
-        while (this.notificationsContainer.children.length > 20) {
-            this.notificationsContainer.removeChild(this.notificationsContainer.lastChild);
+        // Add violation reason if present
+        if (violationReason) {
+            content += `<p class="text-xs text-red-600 font-medium mt-1">⚠️ ${violationReason}</p>`;
         }
-    }
 
-    getNotificationBorderColor(severity) {
-        switch (severity) {
-            case 'high': return 'border-red-200 bg-red-50';
-            case 'medium': return 'border-yellow-200 bg-yellow-50';
-            default: return 'border-blue-200 bg-blue-50';
+        // Add Gemini AI analysis if available
+        if (geminiAnalysis) {
+            content += `
+                <div class="mt-2 p-2 bg-gray-100 rounded text-xs">
+                    <p class="text-gray-500 font-medium mb-1">🤖 AI Analysis:</p>
+                    <p class="text-gray-700 italic">${geminiAnalysis}</p>
+                </div>
+            `;
         }
-    }
 
-    showToast(message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `notification max-w-sm p-4 rounded-lg shadow-lg text-white ${this.getToastColor(type)}`;
-        toast.textContent = message;
-
-        this.toastContainer.appendChild(toast);
-
-        // Trigger animation
-        setTimeout(() => toast.classList.add('show'), 100);
-
-        // Remove after 5 seconds
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    this.toastContainer.removeChild(toast);
-                }
-            }, 300);
-        }, 5000);
-    }
-
-    getToastColor(type) {
-        switch (type) {
-            case 'success': return 'bg-green-600';
-            case 'error': return 'bg-red-600';
-            case 'warning': return 'bg-yellow-600';
-            default: return 'bg-blue-600';
-        }
+        notificationElement.innerHTML = content;
+        this.notificationsContainer.prepend(notificationElement);
     }
 }
 

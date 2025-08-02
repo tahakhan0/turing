@@ -53,11 +53,20 @@ class DetectionService:
         center_y = (bbox["y1"] + bbox["y2"]) // 2
         return (center_x, center_y)
     
+    def _is_point_in_bbox(self, point: Tuple[int, int], bbox: Dict[str, int]) -> bool:
+        """Check if a point is inside a bounding box"""
+        x, y = point
+        return (bbox["x1"] <= x <= bbox["x2"]) and (bbox["y1"] <= y <= bbox["y2"])
+    
     def _find_segment_for_face(self, face_center: Tuple[int, int], user_segments: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Find which segment contains the face center point"""
         for segment in user_segments:
+            # Check polygon first (if available), then fallback to bbox
             if "polygon" in segment and segment["polygon"]:
                 if self._is_point_in_polygon(face_center, segment["polygon"]):
+                    return segment
+            elif "bbox" in segment and segment["bbox"]:
+                if self._is_point_in_bbox(face_center, segment["bbox"]):
                     return segment
         return None
     
@@ -214,18 +223,25 @@ class DetectionService:
                                 "should_alert": False
                             })
             
-            # Check unknown faces in segments
+            # Check unknown faces in segments - all unknown persons trigger alerts (non-residents not allowed)
             for face in unknown_faces:
                 face_center = face["face_center"]
                 segment = self._find_segment_for_face(face_center, user_segments)
                 
                 if segment:
+                    # Always alert for unknown persons since non-residents don't have access
+                    alert_key = f"unknown_{segment['area_id']}"
+                    should_alert = self._should_alert("unknown_person", segment["area_id"], cooldown_minutes=2)
+                    
                     unknown_detections.append({
-                        "type": "unknown_face_in_segment",
+                        "type": "unauthorized_unknown_person",
+                        "person_name": "Unknown Person",
                         "segment": segment,
                         "face_bbox": face["bbox"],
+                        "violation_reason": "Non-residents not permitted - immediate action required",
                         "timestamp": datetime.now().isoformat(),
-                        "face_encoding": face["face_encoding"]
+                        "face_encoding": face["face_encoding"],
+                        "should_alert": should_alert
                     })
             
             return {

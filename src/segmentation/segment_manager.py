@@ -118,7 +118,7 @@ class SegmentManager:
         user_segments = []
         for segment in self.segments.values():
             if segment.user_id == user_id:
-                user_segments.append({
+                segment_data = {
                     "area_id": segment.area_id,
                     "area_type": segment.area_type,
                     "confidence": segment.confidence,
@@ -126,16 +126,23 @@ class SegmentManager:
                     "verified": segment.verified,
                     "created_at": segment.created_at.isoformat(),
                     "updated_at": segment.updated_at.isoformat()
-                })
+                }
+                # Include bbox data if available (for spatial detection)
+                if hasattr(segment, 'bbox') and segment.bbox:
+                    segment_data["bbox"] = segment.bbox
+                user_segments.append(segment_data)
         return user_segments
     
     def _load_user_data(self, user_id: str):
         """Load segments and permissions for a user from persistent storage"""
         if user_id in self._users_loaded:
+            logger.info(f"User {user_id} data already loaded")
             return
         
         # Load segmentation data
+        logger.info(f"Loading segmentation data for user {user_id}")
         seg_data = self.storage.load_segmentation_data(user_id)
+        logger.info(f"Loaded segmentation data: {len(seg_data.get('segments', []))} segments")
         
         # Load segments
         for segment_data in seg_data.get("segments", []):
@@ -179,6 +186,9 @@ class SegmentManager:
                     created_at=created_at,
                     updated_at=updated_at
                 )
+                # Store bbox data if available (for spatial detection)
+                if 'bbox' in segment_data:
+                    segment.bbox = segment_data['bbox']
                 self.segments[segment.area_id] = segment
             except Exception as e:
                 logger.warning(f"Skipping segment {segment_data.get('area_id', 'unknown')} due to error: {str(e)}")
@@ -272,8 +282,13 @@ class SegmentManager:
         # Load user data if not already loaded
         self._load_user_data(user_id)
         
+        # Debug logging for area_id issue
+        logger.info(f"Permission request: user_id={user_id}, area_id={area_id}")
+        logger.info(f"Available segments: {list(self.segments.keys())}")
+        
         if area_id != "all" and area_id not in self.segments:
-            return {"error": "Area not found"}
+            logger.error(f"Area {area_id} not found. Available areas: {list(self.segments.keys())}")
+            return {"error": f"Area not found. Requested: {area_id}, Available: {list(self.segments.keys())}"}
         
         # Validate that person_name is a labeled person for this user
         if not await self.is_labeled_person(person_name, user_id):
