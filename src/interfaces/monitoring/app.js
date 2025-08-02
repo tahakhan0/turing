@@ -54,12 +54,18 @@ class MonitoringDashboard {
             this.isLiveMonitoring = true;
             this.updateConnectionStatus(true);
             this.notificationsContainer.innerHTML = ''; // Clear previous logs
+            this.initializeCanvas(); // Initialize canvas when connection opens
         };
 
         this.websocket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            this.videoStream.src = `data:image/jpeg;base64,${data.image}`;
-            this.handleLiveFeedData(data.notifications);
+            if (data.image) {
+                this.updateVideoCanvas(data.image);
+            }
+            if (data.notifications) {
+                console.log('Analysis result:', data.notifications);
+                this.handleLiveFeedData(data.notifications);
+            }
         };
 
         this.websocket.onerror = (error) => {
@@ -76,12 +82,72 @@ class MonitoringDashboard {
     updateConnectionStatus(connected) {
         this.isLiveMonitoring = connected;
         if (connected) {
-            this.websocketStatusDot.classList.replace('bg-gray-400', 'bg-green-500');
-            this.websocketStatusText.textContent = 'CONNECTED';
+            this.websocketStatusDot.classList.remove('bg-red-400');
+            this.websocketStatusDot.classList.add('bg-green-500');
+            this.websocketStatusText.textContent = 'Connected';
         } else {
-            this.websocketStatusDot.classList.replace('bg-green-500', 'bg-gray-400');
-            this.websocketStatusText.textContent = 'DISCONNECTED';
+            this.websocketStatusDot.classList.remove('bg-green-500');
+            this.websocketStatusDot.classList.add('bg-red-400');
+            this.websocketStatusText.textContent = 'Disconnected';
         }
+    }
+
+    initializeCanvas() {
+        const canvas = this.videoStream;
+        const container = canvas.parentElement;
+        const containerRect = container.getBoundingClientRect();
+        
+        if (containerRect.width === 0 || containerRect.height === 0) {
+            canvas.width = 640;
+            canvas.height = 360;
+        } else {
+            canvas.width = containerRect.width;
+            canvas.height = containerRect.height;
+        }
+        
+        // Test canvas visibility by drawing a red rectangle
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'red';
+        ctx.fillRect(0, 0, 100, 100);
+        
+        console.log('Canvas initialized with dimensions:', canvas.width, 'x', canvas.height);
+        console.log('Canvas element:', canvas);
+        console.log('Canvas style:', window.getComputedStyle(canvas));
+    }
+
+    updateVideoCanvas(base64Image) {
+        const canvas = this.videoStream;
+        if (!canvas) {
+            console.error('Canvas element not found');
+            return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            console.error('Failed to get 2D context');
+            return;
+        }
+        
+        // Create an image from the base64 data
+        const img = new Image();
+        img.onload = () => {
+            // Clear the entire canvas first
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw the image to fill the entire canvas
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Force a repaint
+            canvas.style.display = 'none';
+            canvas.offsetHeight; // Trigger reflow
+            canvas.style.display = '';
+            
+            console.log('Image updated on canvas');
+        };
+        img.onerror = (error) => {
+            console.error('Image loading failed:', error);
+        };
+        img.src = `data:image/jpeg;base64,${base64Image}`;
     }
 
     handleLiveFeedData(data) {
@@ -96,12 +162,20 @@ class MonitoringDashboard {
         }
         if (data.unknown_detections) {
             data.unknown_detections.forEach(d => {
-                this.addNotification(d, 'medium');
+                // Unknown persons are high-severity since non-residents aren't allowed
+                const severity = d.type === 'unauthorized_unknown_person' ? 'high' : 'medium';
+                this.addNotification(d, severity);
             });
         }
 
-        this.peopleCount.textContent = (data.violations?.length || 0) + (data.unknown_detections?.length || 0);
+        // Total people detected
+        const totalPeople = (data.violations?.length || 0) + (data.unknown_detections?.length || 0);
+        this.peopleCount.textContent = totalPeople;
+        
+        // Known people (violations are from known people)
         this.knownCount.textContent = data.violations?.length || 0;
+        
+        // Actual violations (not just known people)
         this.violationsCount.textContent = violationCount;
     }
 
@@ -119,8 +193,11 @@ class MonitoringDashboard {
         const timestamp = new Date(item.timestamp).toLocaleTimeString();
         const person = item.person_name || 'Unknown';
         const area = item.segment?.area_type || 'N/A';
+        const geminiAnalysis = item.gemini_analysis;
+        const violationReason = item.violation_reason;
 
-        notificationElement.innerHTML = `
+        // Create notification content
+        let content = `
             <div class="flex justify-between items-center text-xs">
                 <p class="font-bold text-gray-800">${person}</p>
                 <p class="text-gray-500">${timestamp}</p>
@@ -128,6 +205,22 @@ class MonitoringDashboard {
             <p class="text-xs text-gray-600">Detected in: ${area}</p>
         `;
 
+        // Add violation reason if present
+        if (violationReason) {
+            content += `<p class="text-xs text-red-600 font-medium mt-1">⚠️ ${violationReason}</p>`;
+        }
+
+        // Add Gemini AI analysis if available
+        if (geminiAnalysis) {
+            content += `
+                <div class="mt-2 p-2 bg-gray-100 rounded text-xs">
+                    <p class="text-gray-500 font-medium mb-1">🤖 AI Analysis:</p>
+                    <p class="text-gray-700 italic">${geminiAnalysis}</p>
+                </div>
+            `;
+        }
+
+        notificationElement.innerHTML = content;
         this.notificationsContainer.prepend(notificationElement);
     }
 }

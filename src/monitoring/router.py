@@ -301,8 +301,55 @@ async def websocket_live_feed(websocket: WebSocket, user_id: str):
             # Analyze the frame
             analysis_result = detection_service.analyze_frame_for_violations(frame, user_id)
 
-            # Send bounding boxes and notifications
-            await websocket.send_json(analysis_result)
+            # Add Gemini analysis to detections for richer notifications
+            if analysis_result.get("status") == "success":
+                for violation in analysis_result.get("violations", []):
+                    if violation.get("should_alert", False):
+                        violation["gemini_analysis"] = gemini_service.analyze_violation_frame(frame, violation)
+                
+                for detection in analysis_result.get("unknown_detections", []):
+                    if detection.get("should_alert", False):
+                        detection["gemini_analysis"] = gemini_service.analyze_unknown_activity_frame(frame, detection)
+
+            # Draw bounding boxes on frame
+            frame_with_boxes = frame.copy()
+            if analysis_result.get("status") == "success":
+                # Draw bounding boxes for violations (red)
+                for violation in analysis_result.get("violations", []):
+                    bbox = violation.get("face_bbox", {})
+                    if bbox:
+                        cv2.rectangle(frame_with_boxes, 
+                                    (bbox["x1"], bbox["y1"]), 
+                                    (bbox["x2"], bbox["y2"]), 
+                                    (0, 0, 255), 2)  # Red for violations
+                        # Add person name label
+                        person_name = violation.get("person_name", "Unknown")
+                        cv2.putText(frame_with_boxes, f"{person_name} (VIOLATION)", 
+                                  (bbox["x1"], bbox["y1"] - 10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                
+                # Draw bounding boxes for unknown detections (yellow)
+                for detection in analysis_result.get("unknown_detections", []):
+                    bbox = detection.get("face_bbox", {})
+                    if bbox:
+                        cv2.rectangle(frame_with_boxes, 
+                                    (bbox["x1"], bbox["y1"]), 
+                                    (bbox["x2"], bbox["y2"]), 
+                                    (0, 255, 255), 2)  # Yellow for unknown
+                        cv2.putText(frame_with_boxes, "UNKNOWN PERSON", 
+                                  (bbox["x1"], bbox["y1"] - 10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+            # Convert frame to base64 for transmission
+            _, buffer = cv2.imencode('.jpg', frame_with_boxes)
+            frame_base64 = base64.b64encode(buffer).decode('utf-8')
+
+            # Send frame with analysis data in expected format
+            websocket_data = {
+                "image": frame_base64,
+                "notifications": analysis_result
+            }
+            await websocket.send_json(websocket_data)
 
             # Send notifications for violations
             if analysis_result.get("status") == "success":

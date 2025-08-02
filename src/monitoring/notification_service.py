@@ -94,23 +94,36 @@ class NotificationService:
         """Create a formatted notification message for unknown activity"""
         
         area_type = detection.get("segment", {}).get("area_type", "monitored area")
+        detection_type = detection.get("type", "unknown_face_in_segment")
         
-        notification = {
-            "id": f"unknown_{datetime.now().timestamp()}",
-            "type": "unknown_activity",
-            "title": "Unknown Person Detected",
-            "message": f"Unrecognized person detected in {area_type}",
-            "severity": "medium", 
-            "timestamp": detection.get("timestamp", datetime.now().isoformat()),
-            "data": {
-                "area_type": area_type,
-                "area_id": detection.get("segment", {}).get("area_id"),
-                "frame_image_url": frame_image_url,
-                "analysis_summary": analysis_summary,
-                "bbox": detection.get("face_bbox", {}),
-                "frame_number": detection.get("frame_number")
-            },
-            "actions": [
+        # Determine severity and messaging based on detection type
+        if detection_type == "unauthorized_unknown_person":
+            severity = "high"
+            title = "🚨 SECURITY ALERT - Unauthorized Person"
+            message = f"IMMEDIATE ACTION REQUIRED: Unknown person detected in {area_type}. Non-residents not permitted on property."
+            actions = [
+                {
+                    "label": "Call Security",
+                    "action": "call_security",
+                    "data": {"detection_id": detection.get("id")}
+                },
+                {
+                    "label": "View Live Feed",
+                    "action": "view_live_feed", 
+                    "data": {"area_id": detection.get("segment", {}).get("area_id")}
+                },
+                {
+                    "label": "Identify Person",
+                    "action": "identify_unknown_person",
+                    "data": {"detection_id": detection.get("id")}
+                }
+            ]
+        else:
+            # Original behavior for regular unknown activity
+            severity = "medium"
+            title = "Unknown Person Detected"
+            message = f"Unrecognized person detected in {area_type}"
+            actions = [
                 {
                     "label": "Identify Person",
                     "action": "identify_unknown_person",
@@ -122,6 +135,25 @@ class NotificationService:
                     "data": {"notification_id": f"unknown_{datetime.now().timestamp()}"}
                 }
             ]
+        
+        notification = {
+            "id": f"unknown_{datetime.now().timestamp()}",
+            "type": "unknown_activity",
+            "title": title,
+            "message": message,
+            "severity": severity, 
+            "timestamp": detection.get("timestamp", datetime.now().isoformat()),
+            "data": {
+                "area_type": area_type,
+                "area_id": detection.get("segment", {}).get("area_id"),
+                "frame_image_url": frame_image_url,
+                "analysis_summary": analysis_summary,
+                "bbox": detection.get("face_bbox", {}),
+                "frame_number": detection.get("frame_number"),
+                "detection_type": detection_type,
+                "violation_reason": detection.get("violation_reason")
+            },
+            "actions": actions
         }
         
         return notification
