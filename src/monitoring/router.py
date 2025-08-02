@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from typing import Dict, Any
 import os
 import cv2
 import tempfile
 import logging
+import asyncio
 
 from .detection_service import DetectionService
 from .notification_service import notification_service
@@ -275,3 +277,50 @@ async def health_check():
         },
         "gemini_analysis": gemini_status
     }
+
+import base64
+
+@router.websocket("/ws/live_feed/{user_id}")
+async def websocket_live_feed(websocket: WebSocket, user_id: str):
+    await websocket.accept()
+    video_path = "/Users/tahakhan/Desktop/ring_camera/monitoring_video/intruder.mp4"
+    if not os.path.exists(video_path):
+        await websocket.send_json({"error": "Video file not found"})
+        await websocket.close()
+        return
+
+    cap = cv2.VideoCapture(video_path)
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                # Loop the video
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
+
+            # Analyze the frame
+            analysis_result = detection_service.analyze_frame_for_violations(frame, user_id)
+
+            # Send bounding boxes and notifications
+            await websocket.send_json(analysis_result)
+
+            # Send notifications for violations
+            if analysis_result.get("status") == "success":
+                for violation in analysis_result.get("violations", []):
+                    if violation.get("should_alert", False):
+                        await notification_service.send_violation_notification(
+                            user_id, violation, frame
+                        )
+                for detection in analysis_result.get("unknown_detections", []):
+                    await notification_service.send_unknown_activity_notification(
+                        user_id, detection, frame
+                    )
+
+            await asyncio.sleep(0.1)  # Adjust for desired frame rate
+    except WebSocketDisconnect:
+        logger.info(f"Live feed WebSocket disconnected for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error in live feed WebSocket: {e}")
+    finally:
+        cap.release()
+        await websocket.close()

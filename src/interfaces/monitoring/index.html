@@ -1,19 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alan AI Monitoring Dashboard</title>
+    <title>Turing Monitoring Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .notification {
-            opacity: 0;
-            transform: translateX(100%);
-            transition: all 0.3s ease-in-out;
+        @import url('https://rsms.me/inter/inter.css');
+        body {
+            font-family: 'Inter', sans-serif;
         }
-        .notification.show {
-            opacity: 1;
-            transform: translateX(0);
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+        }
+        #video-feed, #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
         .status-dot {
             width: 10px;
@@ -21,93 +28,65 @@
             border-radius: 50%;
             display: inline-block;
         }
+        .notification-item {
+            transition: all 0.3s ease;
+        }
+        .notification-item:hover {
+            background-color: #f9fafb; /* gray-50 */
+        }
     </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <div class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Alan AI Security Monitoring</h1>
-            <p class="text-gray-600">Real-time home security monitoring with AI-powered analysis</p>
-        </div>
+<body class="bg-gray-100 h-full">
+    <div class="flex flex-col h-full">
+        <!-- Header -->
+        <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
+            <h1 class="text-xl font-bold text-gray-800">Turing Monitoring Dashboard</h1>
+            <div class="flex items-center gap-4">
+                <div id="websocket-status-dot" class="status-dot bg-gray-400"></div>
+                <span id="websocket-status-text" class="text-sm font-medium text-gray-600">DISCONNECTED</span>
+            </div>
+        </header>
 
-        <!-- Connection Status -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">System Status</h2>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="text-center p-4 border rounded-lg">
-                    <div class="status-dot bg-gray-400 mx-auto mb-2" id="websocket-status"></div>
-                    <div class="text-sm font-medium">WebSocket</div>
-                    <div class="text-xs text-gray-600" id="websocket-text">Disconnected</div>
+        <!-- Main Content -->
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Video Feed -->
+            <main class="flex-1 p-6 flex flex-col items-center justify-center">
+                <div class="w-full max-w-6xl bg-black rounded-lg shadow-2xl video-container">
+                    <img id="video-stream" class="rounded-lg" alt="Live security feed will appear here">
                 </div>
-                <div class="text-center p-4 border rounded-lg">
-                    <div class="status-dot bg-gray-400 mx-auto mb-2" id="monitoring-status"></div>
-                    <div class="text-sm font-medium">Monitoring</div>
-                    <div class="text-xs text-gray-600" id="monitoring-text">Offline</div>
-                </div>
-                <div class="text-center p-4 border rounded-lg">
-                    <div class="status-dot bg-gray-400 mx-auto mb-2" id="gemini-status"></div>
-                    <div class="text-sm font-medium">AI Analysis</div>
-                    <div class="text-xs text-gray-600" id="gemini-text">Unknown</div>
-                </div>
-                <div class="text-center p-4 border rounded-lg">
-                    <div class="status-dot bg-gray-400 mx-auto mb-2" id="segments-status"></div>
-                    <div class="text-sm font-medium">Segments</div>
-                    <div class="text-xs text-gray-600" id="segments-text">0 defined</div>
-                </div>
-            </div>
-        </div>
+            </main>
 
-        <!-- Configuration -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">Configuration</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Service URL</label>
-                    <input type="text" id="service-url" class="w-full px-3 py-2 border border-gray-300 rounded-md" value="http://localhost:8000">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">User ID</label>
-                    <input type="text" id="user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Enter your user ID">
-                </div>
-            </div>
-            <div class="mt-4 flex space-x-4">
-                <button id="connect-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Connect</button>
-                <button id="test-notification-btn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700" disabled>Test Notification</button>
-                <button id="refresh-status-btn" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">Refresh Status</button>
-            </div>
-        </div>
+            <!-- Sidebar -->
+            <aside class="w-96 bg-white border-l border-gray-200 p-6 flex flex-col gap-6 overflow-y-auto">
+                <!-- Detections -->
+                <section>
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Live Detections</h2>
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div class="bg-gray-50 p-3 rounded-lg border">
+                            <p class="text-2xl font-bold text-blue-600" id="people-count">0</p>
+                            <p class="text-xs text-gray-500 font-medium">People</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg border">
+                            <p class="text-2xl font-bold text-green-600" id="known-count">0</p>
+                            <p class="text-xs text-gray-500 font-medium">Known</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg border">
+                            <p class="text-2xl font-bold text-red-600" id="violations-count">0</p>
+                            <p class="text-xs text-gray-500 font-medium">Violations</p>
+                        </div>
+                    </div>
+                </section>
 
-        <!-- Frame Analysis -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">Frame Analysis</h2>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Upload Image for Analysis</label>
-                <input type="file" id="frame-upload" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-            </div>
-            <div class="flex space-x-4 mb-4">
-                <button id="analyze-frame-btn" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700" disabled>Analyze Frame</button>
-                <button id="analyze-with-notifications-btn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700" disabled>Analyze with Notifications</button>
-                <button id="analyze-with-gemini-btn" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700" disabled>Analyze with AI</button>
-            </div>
-            <div id="analysis-results" class="hidden mt-4 p-4 bg-gray-50 rounded-lg">
-                <h3 class="font-medium mb-2">Analysis Results</h3>
-                <pre id="analysis-output" class="text-sm text-gray-700 whitespace-pre-wrap max-h-64 overflow-y-auto"></pre>
-            </div>
-        </div>
-
-        <!-- Live Notifications -->
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-semibold mb-4">Live Notifications</h2>
-            <div id="notifications-container" class="space-y-3 max-h-96 overflow-y-auto">
-                <div class="text-gray-500 text-center py-8">
-                    No notifications yet. Connect and analyze frames to see real-time alerts.
-                </div>
-            </div>
+                <!-- Event Log -->
+                <section class="flex-1 flex flex-col min-h-0">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Event Log</h2>
+                    <div id="notifications-container" class="flex-1 space-y-3 overflow-y-auto pr-2 border-t pt-4">
+                        <p class="text-sm text-gray-400 text-center py-4">Awaiting connection...</p>
+                    </div>
+                </section>
+            </aside>
         </div>
     </div>
-
-    <!-- Notification Toast Container -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-3"></div>
 
     <script src="app.js"></script>
 </body>
